@@ -1,31 +1,9 @@
-# Etapa 1: build
-FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
-WORKDIR /src
-
-# Copia o .csproj para o diretório de trabalho no contêiner
-# Verifique se a pasta dbRede está no mesmo diretório do Dockerfile
-COPY ./dbRede/*.csproj ./dbRede/
-
-# Altera para o diretório do projeto
-WORKDIR /src/dbRede
-
-# Restaura as dependências do projeto
-RUN dotnet restore
-
-# Copia o restante dos arquivos do projeto para o diretório de trabalho
-WORKDIR /src
-COPY . .
-
-# Publica o projeto no modo Release
-WORKDIR /src/dbRede
-RUN dotnet publish -c Release -o /app/publish
-
-# Etapa 2: runtime (a parte que executa o aplicativo)
+# Etapa 1: runtime
 FROM mcr.microsoft.com/dotnet/aspnet:8.0
 WORKDIR /app
 
-# Copia os arquivos publicados do build para o runtime
-COPY --from=build /app/publish .
+# Copia os arquivos compilados (já com o binário .dll pronto) para o diretório do contêiner
+COPY ./dbRede/bin/Release/net8.0/publish/ ./
 
 # Expõe a porta 80 para o aplicativo
 EXPOSE 80
