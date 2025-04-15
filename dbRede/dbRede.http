@@ -1,0 +1,6 @@
+@dbRede_HostAddress = http://localhost:5124
+
+GET {{dbRede_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
