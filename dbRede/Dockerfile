@@ -2,12 +2,12 @@
 FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
 WORKDIR /src
 
-# Copia apenas o .csproj para o restore funcionar e aproveitar cache
+# Copia apenas o .csproj
 COPY ./dbRede/*.csproj ./dbRede/
 WORKDIR /src/dbRede
 RUN dotnet restore
 
-# Copia o restante dos arquivos do projeto
+# Copia o restante dos arquivos
 WORKDIR /src
 COPY . .
 
