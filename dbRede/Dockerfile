@@ -2,17 +2,19 @@
 FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
 WORKDIR /src
 
-# Copia apenas o .csproj
-COPY ./dbRede/*.csproj ./dbRede/
+# Cria a pasta de destino antes do COPY
+RUN mkdir -p /src/dbRede
+
+# Copia apenas o .csproj para restaurar dependências e aproveitar o cache
+COPY dbRede/*.csproj dbRede/
+
 WORKDIR /src/dbRede
 RUN dotnet restore
 
 # Copia o restante dos arquivos
-WORKDIR /src
 COPY . .
 
 # Publica o projeto
-WORKDIR /src/dbRede
 RUN dotnet publish -c Release -o /app/publish
 
 # Etapa 2: runtime
