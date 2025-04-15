@@ -3,6 +3,7 @@ FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
 WORKDIR /src
 
 # Copia o .csproj para o diretório de trabalho no contêiner
+# Verifique se a pasta dbRede está no mesmo diretório do Dockerfile
 COPY ./dbRede/*.csproj ./dbRede/
 
 # Altera para o diretório do projeto
