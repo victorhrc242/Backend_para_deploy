@@ -1,0 +1,12 @@
+# Ignorar a pasta bin/ e obj/ (geralmente usadas por projetos .NET)
+bin/
+obj/
+
+# Ignorar arquivos temporários de IDEs, como os do Visual Studio
+.vs/
+.vscode/
+.idea/
+
+# Ignorar arquivos de configuração do sistema
+*.log
+*.bak
