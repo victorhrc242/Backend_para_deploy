@@ -6,7 +6,7 @@ EXPOSE 80
 # Etapa 2: build
 FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
 WORKDIR /src
-COPY dbRede/dbRede.csproj ./dbRede/
+COPY ./dbRede/dbRede.csproj /src/dbRede/
 RUN dotnet restore "dbRede.csproj"
 COPY . . 
 WORKDIR "/src/dbRede"
