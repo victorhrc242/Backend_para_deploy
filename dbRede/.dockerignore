@@ -10,3 +10,5 @@ obj/
 # Ignorar arquivos de configuração do sistema
 *.log
 *.bak
+# Não ignorar o diretório dbRede
+!dbRede/
