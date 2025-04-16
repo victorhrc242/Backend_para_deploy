@@ -23,10 +23,10 @@ builder.Services.AddCors(options =>
     options.AddPolicy("AllowAll", builder =>
     {
         builder
-            .WithOrigins("https://devisocial.vercel.app/") // frontend local
+            .WithOrigins("https://devisocial.vercel.app") // frontend em produção
             .AllowAnyHeader()
             .AllowAnyMethod()
-            .AllowCredentials(); // se usar cookies/autenticação
+            .AllowCredentials();
     });
 });
 
