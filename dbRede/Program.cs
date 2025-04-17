@@ -22,10 +22,13 @@ builder.Services.AddSignalR();
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowAll",
-        builder => builder.AllowAnyOrigin()
-                          .AllowAnyMethod()
-                          .AllowAnyHeader());
+        builder => builder
+            .SetIsOriginAllowed(_ => true) // permite qualquer domínio
+            .AllowAnyHeader()
+            .AllowAnyMethod()
+            .AllowCredentials()); // 👈 ESSENCIAL para SignalR
 });
+
 
 var app = builder.Build();
 
