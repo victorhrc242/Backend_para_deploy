@@ -1,4 +1,5 @@
 ﻿using dbRede.Hubs;
+using dbRede.SignalR;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -48,7 +49,7 @@ app.UseAuthorization();
 
 // Hub do SignalR
 app.MapHub<FeedHub>("/feedHub");
-
+app.MapHub<ComentarioHub>("/comentarioHub");
 // Controllers
 app.MapControllers();
 

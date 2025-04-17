@@ -1,5 +1,6 @@
 ﻿using dbRede.Models;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.SignalR;
 using Supabase;
 using static dbRede.Controllers.CurtidaController;
 using static Supabase.Postgrest.Constants;
@@ -9,11 +10,12 @@ using static Supabase.Postgrest.Constants;
 public class ComentarioController : ControllerBase
 {
     private readonly Client _supabase;
-
-    public ComentarioController(IConfiguration configuration)
+    private readonly IHubContext _hubContext;
+    public ComentarioController(IConfiguration configuration,IHubContext hubContext)
     {
         var service = new SupabaseService(configuration);
         _supabase = service.GetClient();
+        _hubContext = hubContext;
     }
 
     [HttpPost("comentar")]
@@ -46,7 +48,7 @@ public class ComentarioController : ControllerBase
             // Atualizar o post no banco
             await _supabase.From<Post>().Update(post);
         }
-
+        await _hubContext.Clients.All.SendAsync("Novo comentario", post);
         return Ok(new
         {
             sucesso = true,
