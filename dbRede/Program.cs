@@ -21,19 +21,23 @@ builder.Services.AddSignalR();
 // ✅ Configure CORS corretamente
 builder.Services.AddCors(options =>
 {
-    options.AddPolicy("AllowAll",
-        builder => builder
-            .SetIsOriginAllowed(_ => true) // permite qualquer domínio
-            .AllowAnyHeader()
+    options.AddPolicy("AllowLocalhostWithCredentials", builder =>
+    {
+        builder
+            .WithOrigins("http://localhost:5173")
+            .AllowCredentials()
             .AllowAnyMethod()
-            .AllowCredentials()); // 👈 ESSENCIAL para SignalR
+            .AllowAnyHeader();
+    });
 });
+
 
 
 var app = builder.Build();
 
 // ✅ Coloque o UseCors antes dos endpoints
-app.UseCors("AllowAll");
+app.UseCors("AllowLocalhostWithCredentials");
+
 
 app.UseSwagger();
 app.UseSwaggerUI(c =>
