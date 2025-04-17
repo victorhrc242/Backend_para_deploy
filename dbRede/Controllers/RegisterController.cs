@@ -87,6 +87,41 @@ public class RegisterController : ControllerBase
             return StatusCode(500, new { error = "Erro interno no servidor.", details = ex.Message });
         }
     }
+    [HttpPut("editarusuarios/{id}")]
+    public async Task<IActionResult> EditarUsuario(Guid id, [FromBody] putuser dados)
+    {
+        try
+        {
+            var usuario = await _supabase.From<User>().Where(u => u.id == id).Single();
+            if (usuario == null) return NotFound("Usuário não encontrado");
+
+            usuario.Nome = dados.Nome;
+            usuario.biografia = dados.biografia;
+            usuario.FotoPerfil = dados.imagem; // Já é uma URL
+
+            var resultado = await _supabase
+      .From<User>()
+      .Where(u => u.id == id)
+      .Set(u => u.Nome, usuario.Nome)
+      .Set(u => u.biografia, usuario.biografia)
+      .Set(u => u.FotoPerfil, usuario.FotoPerfil)
+      .Update();
+
+            var usuariosDto = resultado.Models.Select(u => new UserDto
+            {
+                Id = u.id,
+                Nome = u.Nome,
+                imagem = u.FotoPerfil,
+                biografia = u.biografia
+            });
+
+            return Ok(usuariosDto);
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, $"Erro ao editar usuário: {ex.Message}");
+        }
+    }
 
     [HttpGet("usuario")]
     public async Task<IActionResult> ListarUsuarios()
@@ -159,8 +194,15 @@ public class RegisterController : ControllerBase
         public string Nome { get; set; }
         public string Email { get; set; }
         public string imagem { get; set; }
-    }
+        public string biografia { get; set; }
 
+    }
+    public class putuser
+    {
+        public string Nome { get; set; }
+        public string imagem { get; set; }
+        public string biografia { get; set; }
+    }
 
     // Classe para receber os dados do cadastro
     public class RegisterRequest
