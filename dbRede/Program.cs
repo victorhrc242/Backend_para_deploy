@@ -21,15 +21,10 @@ builder.Services.AddSignalR();
 // ✅ Configure CORS corretamente
 builder.Services.AddCors(options =>
 {
-    options.AddPolicy("AllowAll", builder =>
-    {
-        builder
-            .WithOrigins("https://devisocial.vercel.app",
-            "http://localhost:5173") // frontend em produção
-            .AllowAnyHeader()
-            .AllowAnyMethod()
-            .AllowCredentials();
-    });
+    options.AddPolicy("AllowAll",
+        builder => builder.AllowAnyOrigin()
+                          .AllowAnyMethod()
+                          .AllowAnyHeader());
 });
 
 var app = builder.Build();
