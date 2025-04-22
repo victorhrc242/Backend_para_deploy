@@ -1,8 +1,6 @@
 ﻿using dbRede.Hubs;
 using dbRede.SignalR;
-
 var builder = WebApplication.CreateBuilder(args);
-
 // Serviços
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
@@ -14,10 +12,8 @@ builder.Services.AddSwaggerGen(c =>
         Version = "v1"
     });
 });
-
 builder.Services.AddSingleton<SupabaseService>();
 builder.Services.AddSignalR();
-
 // ✅ Configure CORS corretamente
 builder.Services.AddCors(options =>
 {
@@ -31,29 +27,20 @@ builder.Services.AddCors(options =>
             .AllowAnyHeader();
     });
 });
-
-
-
 var app = builder.Build();
-
 // ✅ Coloque o UseCors antes dos endpoints
+app.UseHttpsRedirection();
 app.UseCors("AllowLocalhostWithCredentials");
-
-
 app.UseSwagger();
 app.UseSwaggerUI(c =>
 {
     c.SwaggerEndpoint("/swagger/v1/swagger.json", "dbRede API v1");
     c.RoutePrefix = "swagger";
 });
-
-app.UseHttpsRedirection();
 app.UseAuthorization();
-
 // Hub do SignalR
 app.MapHub<FeedHub>("/feedHub");
 app.MapHub<ComentarioHub>("/comentarioHub");
 // Controllers
 app.MapControllers();
-
 app.Run();
