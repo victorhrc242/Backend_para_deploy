@@ -188,6 +188,45 @@ public class RegisterController : ControllerBase
 
         return Ok(usuarioDto);
     }
+
+    // Função para fazer upload da imagem
+    // esta dando erro de   file name e stream de coisa que não da para converter de byte para string
+    //public async Task<string> UploadImageAsync(IFormFile file, string bucketName)
+    //{
+    //    try
+    //    {
+    //        // Verificar se o arquivo foi enviado
+    //        if (file == null || file.Length == 0)
+    //            throw new Exception("Nenhum arquivo foi enviado.");
+
+    //        // Definir o nome do arquivo a ser salvo
+    //        var fileName = Guid.NewGuid().ToString() + Path.GetExtension(file.FileName);
+
+    //        // Obter o fluxo de dados do arquivo
+    //        using (var stream = file.OpenReadStream())
+    //        {
+    //            // Obter o bucket do Supabase Storage
+    //            var bucket = _supabase.Storage.From(bucketName);
+
+    //            // Fazer upload para o Supabase Storage com o Stream
+    //            var uploadResponse = await bucket.Upload(fileName, stream);
+
+    //            // Verificar se houve erro no upload
+    //            if (uploadResponse != null && uploadResponse.HasError)
+    //                throw new Exception("Erro ao fazer upload da imagem.");
+
+    //            // Retornar a URL pública do arquivo
+    //            var publicUrl = bucket.GetPublicUrl(fileName).ToString();
+    //            return publicUrl;
+    //        }
+    //    }
+    //    catch (Exception ex)
+    //    {
+    //        throw new Exception($"Erro ao fazer upload da imagem: {ex.Message}");
+    //    }
+    //}
+
+
     public class UserDto
     {
         public Guid Id { get; set; }
