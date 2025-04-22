@@ -24,7 +24,8 @@ builder.Services.AddCors(options =>
     options.AddPolicy("AllowLocalhostWithCredentials", builder =>
     {
         builder
-            .WithOrigins("http://localhost:5173")
+            .WithOrigins("http://localhost:5173",
+            "https://devisocial.vercel.app/Home")
             .AllowCredentials()
             .AllowAnyMethod()
             .AllowAnyHeader();
