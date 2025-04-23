@@ -50,33 +50,112 @@ public class Logi : ControllerBase
             user = userDTO
         });
     }
+    // enviar codigo
+    [HttpPost("Enviar-codigo")]
+    public async Task<IActionResult> EnviarCodigo([FromBody] EnviarCodigoDTO dados)
+    {
+        if (string.IsNullOrEmpty(dados.Email))
+            return BadRequest("Email é obrigatório.");
+
+        var usuarioResponse = await _supabase
+            .From<User>()
+            .Where(u => u.Email == dados.Email)
+            .Get();
+
+        var usuario = usuarioResponse.Models.FirstOrDefault();
+
+        if (usuario == null)
+            return NotFound("Usuário não encontrado.");
+
+        var codigo = new Random().Next(100000, 999999).ToString();
+
+        var recovery = new PasswordRecovery
+        {
+            UserId = usuario.id,
+            RecoveryCode = codigo,
+            Expiration = DateTime.UtcNow.AddMinutes(15),
+            IsUsed = false
+        };
+
+        await _supabase.From<PasswordRecovery>().Insert(recovery);
+
+        var emailService = new EmailService();
+        await emailService.EnviarEmailAsync(
+            dados.Email,
+            "Recuperação de senha - Sua rede social",
+            $"Olá, {usuario.Nome}! \n\nSeu código de recuperação é: {codigo}\n\nEle expira em 15 minutos.");
+
+        return Ok("Código de recuperação enviado para o e-mail.");
+    }
+
 
     [HttpPut("Recuperar-senha")]
-public async Task<IActionResult> RecuperarSenha([FromBody] RecuperarSenhaDTO dados)
-{
-    if (string.IsNullOrEmpty(dados.Email) || string.IsNullOrEmpty(dados.NovaSenha))
-        return BadRequest("Email e nova senha são obrigatórios.");
+    public async Task<IActionResult> RecuperarSenha([FromBody] RecuperarSenhaDTO dados)
+    {
+        if (string.IsNullOrWhiteSpace(dados.Email) ||
+            string.IsNullOrWhiteSpace(dados.NovaSenha) ||
+            string.IsNullOrWhiteSpace(dados.CodigoRecuperacao))
+        {
+            return BadRequest("Email, código e nova senha são obrigatórios.");
+        }
 
-    // Criptografa a nova senha com BCrypt
-    string senhaCriptografada = BCrypt.Net.BCrypt.HashPassword(dados.NovaSenha);
+        try
+        {
+            var usuarioResponse = await _supabase
+                .From<User>()
+                .Where(u => u.Email == dados.Email)
+                .Get();
 
-    // Atualiza a senha com base no e-mail
-    var response = await _supabase
-        .From<User>()
-        .Where(x => x.Email == dados.Email)
-        .Set(x => x.Senha, senhaCriptografada)
-        .Update();
+            var usuario = usuarioResponse.Models.FirstOrDefault();
+            if (usuario == null)
+                return NotFound("Usuário não encontrado.");
 
-    if (response.Models.Count == 0)
-        return NotFound("Usuário não encontrado.");
+            var codigoResponse = await _supabase
+                .From<PasswordRecovery>()
+                .Where(c => c.UserId == usuario.id &&
+                            c.RecoveryCode == dados.CodigoRecuperacao &&
+                            !c.IsUsed &&
+                            c.Expiration > DateTime.UtcNow)
+                .Get();
 
-    return Ok("Senha atualizada com sucesso.");
-}
+            var codigo = codigoResponse.Models.FirstOrDefault();
+            if (codigo == null)
+                return BadRequest("Código de recuperação inválido ou expirado.");
 
-public class RecuperarSenhaDTO
+            string senhaCriptografada = BCrypt.Net.BCrypt.HashPassword(dados.NovaSenha);
+
+            var updateResponse = await _supabase
+                .From<User>()
+                .Where(x => x.id == usuario.id)
+                .Set(x => x.Senha, senhaCriptografada)
+                .Update();
+
+            if (updateResponse.Models.Count == 0)
+                return StatusCode(500, "Erro ao atualizar a senha.");
+
+            // Marca o código como usado
+            codigo.IsUsed = true;
+            await _supabase.From<PasswordRecovery>().Upsert(codigo);
+
+            return Ok("Senha atualizada com sucesso.");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Erro RecuperarSenha] {ex.Message}");
+            return StatusCode(500, "Ocorreu um erro ao processar a solicitação.");
+        }
+    }
+
+    public class EnviarCodigoDTO
+    {
+        public string Email { get; set; }
+    }
+
+    public class RecuperarSenhaDTO
     {
         public string Email { get; set; }
         public string NovaSenha { get; set; }
+        public string CodigoRecuperacao { get; set; } // Novo campo
     }
 
     public class LoginRequest
@@ -88,7 +167,7 @@ public class RecuperarSenhaDTO
     {
         public string Email { get; set; }
         public Guid id { get; set; }
-        public  string Nome { get; set; }
+        public string Nome { get; set; }
     }
     private string GerarToken(UserDTO user)
     {
