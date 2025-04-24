@@ -8,7 +8,7 @@ using System.Collections.Concurrent;
 using Microsoft.IdentityModel.Tokens;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
-
+using static Supabase.Postgrest.Constants;
 [ApiController]
 [Route("api/auth")]
 public class Logi : ControllerBase
@@ -87,7 +87,7 @@ public class Logi : ControllerBase
 
         return Ok("Código de recuperação enviado para o e-mail.");
     }
-
+    // recuperar senha 
 
     [HttpPut("Recuperar-senha")]
     public async Task<IActionResult> RecuperarSenha([FromBody] RecuperarSenhaDTO dados)
@@ -102,36 +102,47 @@ public class Logi : ControllerBase
         try
         {
             var usuarioResponse = await _supabase
-                .From<User>()
-                .Where(u => u.Email == dados.Email)
-                .Get();
-
-            var usuario = usuarioResponse.Models.FirstOrDefault();
-            if (usuario == null)
+           .From<User>()
+           .Where(u => u.Email == dados.Email)
+           .Get();
+            if (usuarioResponse == null || usuarioResponse.Models == null || !usuarioResponse.Models.Any())
+            {
+                Console.WriteLine($"[DEBUG] Nenhum usuário encontrado com email: {dados.Email}");
                 return NotFound("Usuário não encontrado.");
+            }
 
+            var usuario = usuarioResponse.Models.First();
+            // usei o filter ao inves do were pois seria masi facil na hora de buscar
+            //para editar
             var codigoResponse = await _supabase
-                .From<PasswordRecovery>()
-                .Where(c => c.UserId == usuario.id &&
-                            c.RecoveryCode == dados.CodigoRecuperacao &&
-                            !c.IsUsed &&
-                            c.Expiration > DateTime.UtcNow)
-                .Get();
+           .From<PasswordRecovery>()
+           .Filter("user_id", Operator.Equals, usuario.id.ToString())
+           .Filter("recovery_code", Operator.Equals, dados.CodigoRecuperacao)
+           .Filter("is_used", Operator.Equals, "false")
+           .Filter("expiration", Operator.GreaterThan, DateTime.UtcNow.ToString("o"))
+           .Get();
 
-            var codigo = codigoResponse.Models.FirstOrDefault();
-            if (codigo == null)
+            if (codigoResponse == null || codigoResponse.Models == null || !codigoResponse.Models.Any())
+            {
                 return BadRequest("Código de recuperação inválido ou expirado.");
+            }
 
+            var codigo = codigoResponse.Models.First();
+
+            // Criptografa a nova senha
             string senhaCriptografada = BCrypt.Net.BCrypt.HashPassword(dados.NovaSenha);
 
+            // Atualiza a senha
             var updateResponse = await _supabase
                 .From<User>()
                 .Where(x => x.id == usuario.id)
                 .Set(x => x.Senha, senhaCriptografada)
                 .Update();
 
-            if (updateResponse.Models.Count == 0)
+            if (updateResponse == null || updateResponse.Models == null || updateResponse.Models.Count == 0)
+            {
                 return StatusCode(500, "Erro ao atualizar a senha.");
+            }
 
             // Marca o código como usado
             codigo.IsUsed = true;
