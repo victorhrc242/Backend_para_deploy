@@ -1,8 +1,12 @@
-﻿using dbRede.Models;
+﻿using dbRede.Hubs;
+using dbRede.Models;
+using dbRede.SignalR;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.SignalR;
 using Supabase;
+using static ComentarioController;
 using static dbRede.Controllers.CurtidaController;
+using static dbRede.Controllers.FeedController;
 using static Supabase.Postgrest.Constants;
 
 [ApiController]
@@ -10,12 +14,13 @@ using static Supabase.Postgrest.Constants;
 public class ComentarioController : ControllerBase
 {
     private readonly Client _supabase;
-    private readonly IHubContext _hubContext;
-    public ComentarioController(IConfiguration configuration,IHubContext hubContext)
+    private readonly IHubContext<ComentarioHub> _HubContext;
+
+    public ComentarioController(IConfiguration configuration,IHubContext <ComentarioHub> hubContext)
     {
         var service = new SupabaseService(configuration);
         _supabase = service.GetClient();
-        _hubContext = hubContext;
+        _HubContext = hubContext;
     }
 
     [HttpPost("comentar")]
@@ -48,7 +53,7 @@ public class ComentarioController : ControllerBase
             // Atualizar o post no banco
             await _supabase.From<Post>().Update(post);
         }
-        await _hubContext.Clients.All.SendAsync("Novo comentario", post);
+        await _HubContext.Clients.All.SendAsync("Novo comentario", post);
         return Ok(new
         {
             sucesso = true,
@@ -82,13 +87,13 @@ public class ComentarioController : ControllerBase
             comentarios
         });
     }
-
     public class CriarComentarioRequest
     {
         public Guid PostId { get; set; }
         public Guid AutorId { get; set; }
         public string Conteudo { get; set; }
     }
+
     public class ComentarioResponseDto
     {
         public Guid Id { get; set; }
@@ -96,6 +101,9 @@ public class ComentarioController : ControllerBase
         public Guid AutorId { get; set; }
         public string Conteudo { get; set; }
         public DateTime DataComentario { get; set; }
+        public string NomeAutor { get; set; }
+
+        public ComentarioResponseDto() { }
 
         public ComentarioResponseDto(Comentario comentario)
         {
@@ -106,5 +114,6 @@ public class ComentarioController : ControllerBase
             DataComentario = comentario.DataComentario;
         }
     }
+
 
 }
