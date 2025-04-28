@@ -29,6 +29,7 @@ public class RegisterController : ControllerBase
     public async Task<IActionResult> Register([FromBody] RegisterRequest request)
     {
         if (string.IsNullOrWhiteSpace(request.Nome) ||
+            string.IsNullOrWhiteSpace(request.Nome_usuario) ||
             string.IsNullOrWhiteSpace(request.Email) ||
             string.IsNullOrWhiteSpace(request.Senha) ||
             string.IsNullOrWhiteSpace(request.biografia) ||
@@ -40,6 +41,7 @@ public class RegisterController : ControllerBase
 
         try
         {
+            var nomeusuarioNomralizado = request.Nome_usuario.Trim().ToLower();
             var nomeNormalizado = request.Nome.Trim().ToLower();
             var emailNormalizado = request.Email.Trim().ToLower();
 
@@ -49,7 +51,7 @@ public class RegisterController : ControllerBase
                 return BadRequest(new { error = "E-mail já cadastrado." });
 
             // Verificar se o nome de usuário já está em uso
-            var existingNome = await _supabase.From<User>().Where(u => u.Nome == nomeNormalizado).Get();
+            var existingNome = await _supabase.From<User>().Where(u => u.Nome_usuario == nomeNormalizado).Get();
             if (existingNome.Models.Any())
                 return BadRequest(new { error = "Nome de usuário já está em uso." });
 
@@ -58,7 +60,8 @@ public class RegisterController : ControllerBase
 
             var newUser = new User
             {
-                Nome = nomeNormalizado,
+                Nome=nomeNormalizado,
+                Nome_usuario = nomeusuarioNomralizado,
                 Email = emailNormalizado,
                 Senha = senhaHash,
                 FotoPerfil = request.FotoPerfil, // A URL da foto de perfil
@@ -75,6 +78,7 @@ public class RegisterController : ControllerBase
                 user = new
                 {
                     newUser.Nome,
+                    newUser.Nome_usuario,
                     newUser.Email,
                     newUser.FotoPerfil,
                     newUser.biografia,
@@ -95,14 +99,14 @@ public class RegisterController : ControllerBase
             var usuario = await _supabase.From<User>().Where(u => u.id == id).Single();
             if (usuario == null) return NotFound("Usuário não encontrado");
 
-            usuario.Nome = dados.Nome;
+            usuario.Nome_usuario = dados.Nome;
             usuario.biografia = dados.biografia;
             usuario.FotoPerfil = dados.imagem; // Já é uma URL
 
             var resultado = await _supabase
       .From<User>()
       .Where(u => u.id == id)
-      .Set(u => u.Nome, usuario.Nome)
+      .Set(u => u.Nome_usuario, usuario.Nome_usuario)
       .Set(u => u.biografia, usuario.biografia)
       .Set(u => u.FotoPerfil, usuario.FotoPerfil)
       .Update();
@@ -110,7 +114,7 @@ public class RegisterController : ControllerBase
             var usuariosDto = resultado.Models.Select(u => new UserDto
             {
                 Id = u.id,
-                Nome = u.Nome,
+                Nome_usuario = u.Nome_usuario,
                 imagem = u.FotoPerfil,
                 biografia = u.biografia
             });
@@ -133,8 +137,10 @@ public class RegisterController : ControllerBase
         var usuarios = usuariosRelacionados.Models.Select(u => new UserDto
         {
             Id = u.id,
+            Nome_usuario = u.Nome_usuario,
             Nome = u.Nome,
             Email = u.Email,
+            biografia=u.biografia,
             imagem=u.FotoPerfil
             
         });
@@ -157,7 +163,9 @@ public class RegisterController : ControllerBase
         var usuarioDto = new UserDto
         {
             Id = usuario.id,
+            Nome_usuario = usuario.Nome_usuario,
             Nome = usuario.Nome,
+            biografia = usuario.biografia,
             Email = usuario.Email,
            imagem=usuario.FotoPerfil
             
@@ -170,7 +178,7 @@ public class RegisterController : ControllerBase
     {
         var resultado = await _supabase
             .From<User>()
-            .Where(u => u.Nome == nome)
+            .Where(u => u.Nome_usuario == nome)
             .Get();
 
         var usuario = resultado.Models.FirstOrDefault();
@@ -181,52 +189,15 @@ public class RegisterController : ControllerBase
         var usuarioDto = new UserDto
         {
             Id = usuario.id,
-            Nome = usuario.Nome,
+            Nome_usuario = usuario.Nome_usuario,
+            Nome=usuario.Nome,
+            biografia = usuario.biografia,
             Email = usuario.Email,
             imagem= usuario.FotoPerfil
         };
 
         return Ok(usuarioDto);
     }
-
-    // Função para fazer upload da imagem
-    // esta dando erro de   file name e stream de coisa que não da para converter de byte para string
-    //public async Task<string> UploadImageAsync(IFormFile file, string bucketName)
-    //{
-    //    try
-    //    {
-    //        // Verificar se o arquivo foi enviado
-    //        if (file == null || file.Length == 0)
-    //            throw new Exception("Nenhum arquivo foi enviado.");
-
-    //        // Definir o nome do arquivo a ser salvo
-    //        var fileName = Guid.NewGuid().ToString() + Path.GetExtension(file.FileName);
-
-    //        // Obter o fluxo de dados do arquivo
-    //        using (var stream = file.OpenReadStream())
-    //        {
-    //            // Obter o bucket do Supabase Storage
-    //            var bucket = _supabase.Storage.From(bucketName);
-
-    //            // Fazer upload para o Supabase Storage com o Stream
-    //            var uploadResponse = await bucket.Upload(fileName, stream);
-
-    //            // Verificar se houve erro no upload
-    //            if (uploadResponse != null && uploadResponse.HasError)
-    //                throw new Exception("Erro ao fazer upload da imagem.");
-
-    //            // Retornar a URL pública do arquivo
-    //            var publicUrl = bucket.GetPublicUrl(fileName).ToString();
-    //            return publicUrl;
-    //        }
-    //    }
-    //    catch (Exception ex)
-    //    {
-    //        throw new Exception($"Erro ao fazer upload da imagem: {ex.Message}");
-    //    }
-    //}
-
-
     public class UserDto
     {
         public Guid Id { get; set; }
@@ -234,6 +205,7 @@ public class RegisterController : ControllerBase
         public string Email { get; set; }
         public string imagem { get; set; }
         public string biografia { get; set; }
+        public string Nome_usuario { get; set; }
 
     }
     public class putuser
@@ -252,5 +224,6 @@ public class RegisterController : ControllerBase
         public string FotoPerfil { get; set; }
         public string biografia { get; set; }
         public string dataaniversario { get; set; }
+        public string Nome_usuario { get; set; }
     }
 }

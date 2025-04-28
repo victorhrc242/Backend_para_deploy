@@ -16,6 +16,10 @@ public class User : BaseModel
     [Column("nome")]
     public string Nome { get; set; }
 
+
+    [Column("Nome-usuario")]
+    public string Nome_usuario { get; set; }
+
     [Column("email")]
     public string Email { get; set; }
 
