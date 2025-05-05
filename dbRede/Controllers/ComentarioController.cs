@@ -68,25 +68,37 @@ public class ComentarioController : ControllerBase
             }
         });
     }
-    // GET: api/comentario/post/{postId}
-    [HttpGet("post/{postId}")]
-    public async Task<IActionResult> ListarComentariosPorPost(Guid postId)
+    [HttpGet("mensagens/{usuario1Id}/{usuario2Id}")]
+    public async Task<IActionResult> ListarMensagensEntreUsuarios(Guid usuario1Id, Guid usuario2Id)
     {
         var resposta = await _supabase
-            .From<Comentario>()
-            .Where(c => c.PostId == postId)
-            .Order("data_comentario", Ordering.Ascending)
+            .From<Mensagens>()
+            .Where(m =>
+                (m.id_remetente == usuario1Id && m.id_destinatario == usuario2Id) ||
+                (m.id_remetente == usuario2Id && m.id_destinatario == usuario1Id)
+            )
+            .Order("data_envio", Ordering.Ascending)
             .Get();
 
-        var comentarios = resposta.Models.Select(c => new ComentarioResponseDto(c)).ToList();
+        var mensagens = resposta.Models.Select(m => new
+        {
+            m.Id,
+            m.id_remetente,
+            m.id_destinatario,
+            m.conteudo,
+            m.data_envio,
+            m.lida,
+            m.apagada,
+        }).ToList();
 
         return Ok(new
         {
             sucesso = true,
-            postId,
-            comentarios
+            usuarios = new[] { usuario1Id, usuario2Id },
+            mensagens
         });
     }
+
     public class CriarComentarioRequest
     {
         public Guid PostId { get; set; }
