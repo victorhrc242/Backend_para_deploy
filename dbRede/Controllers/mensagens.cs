@@ -3,6 +3,7 @@ using dbRede.SignalR;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.SignalR;
 using Supabase;
+
 using static ComentarioController;
 using static Supabase.Postgrest.Constants;
 
@@ -67,33 +68,62 @@ namespace dbRede.Controllers
                 }
             });
         }
-        // listagem das mensagens pelos usuarios
+        // endpoint para listar as mensagens do chat
         [HttpGet("mensagens/{usuario1Id}/{usuario2Id}")]
         public async Task<IActionResult> ListarMensagensEntreUsuarios(Guid usuario1Id, Guid usuario2Id)
         {
-            var resposta = await _supabase
-     .From<Mensagens>()
-     .Where(m => m.id_remetente == usuario1Id && m.id_destinatario == usuario2Id)
-     .Order("data_envio", Ordering.Ascending)
-     .Get();
-
-            var mensagens = resposta.Models.Select(m => new
+            try
             {
-                m.Id,
-                m.id_remetente,
-                m.id_destinatario,
-                m.conteudo,
-                m.data_envio,
-                m.lida,
-                m.apagada
-            }).ToList();
+                var remetente1 = usuario1Id.ToString();
+                var destinatario1 = usuario2Id.ToString();
+                var remetente2 = usuario2Id.ToString();
+                var destinatario2 = usuario1Id.ToString();
 
-            return Ok(new
+                var resposta1 = await _supabase
+                    .From<Mensagens>()
+                    .Filter("id_remetente", Operator.Equals, remetente1)
+                    .Filter("id_destinatario", Operator.Equals, destinatario1)
+                    .Filter("apagada", Operator.Equals, "false") // corrigido
+                    .Get();
+
+                var resposta2 = await _supabase
+                    .From<Mensagens>()
+                    .Filter("id_remetente", Operator.Equals, remetente2)
+                    .Filter("id_destinatario", Operator.Equals, destinatario2)
+                    .Filter("apagada", Operator.Equals, "false") // corrigido
+                    .Get();
+
+                var mensagens = resposta1.Models
+                    .Concat(resposta2.Models)
+                    .OrderBy(m => m.data_envio)
+                    .Select(m => new
+                    {
+                        m.Id,
+                        m.id_remetente,
+                        m.id_destinatario,
+                        m.conteudo,
+                        m.data_envio,
+                        m.lida,
+                        m.apagada
+                    })
+                    .ToList();
+
+                return Ok(new
+                {
+                    sucesso = true,
+                    usuarios = new[] { usuario1Id, usuario2Id },
+                    mensagens
+                });
+            }
+            catch (Exception ex)
             {
-                sucesso = true,
-                usuarios = new[] { usuario1Id, usuario2Id },
-                mensagens
-            });
+                return StatusCode(500, new
+                {
+                    sucesso = false,
+                    mensagem = "Erro ao buscar mensagens.",
+                    erro = ex.Message
+                });
+            }
         }
         // marcar as mensagens como apagada ao inves de simplesmente apagar
         [HttpPut("mensagens/{mensagemId}/apagar")]
@@ -103,16 +133,13 @@ namespace dbRede.Controllers
                 .From<Mensagens>()
                 .Where(m => m.Id == mensagemId)
                 .Get();
-
             var mensagem = resposta.Models.FirstOrDefault();
-
             if (mensagem == null)
                 return NotFound(new { sucesso = false, mensagem = "Mensagem não encontrada." });
-
             mensagem.apagada = true;
-
             await _supabase.From<Mensagens>().Update(mensagem);
-
+            // Notifica os clientes via SignalR que a mensagem foi apagada
+            await _HubContext.Clients.All.SendAsync("MensagemApagada", mensagemId, mensagem.apagada);
             return Ok(new
             {
                 sucesso = true,
@@ -148,6 +175,7 @@ namespace dbRede.Controllers
             var updateResposta = await _supabase
                 .From<Mensagens>()
                 .Update(mensagem);
+            await _HubContext.Clients.All.SendAsync("Mensagem lida", mensagemId, mensagem.lida);
             return Ok(new
             {
                 sucesso = true,
