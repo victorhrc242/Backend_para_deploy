@@ -1,13 +1,15 @@
 ﻿using Microsoft.AspNetCore.SignalR;
 
-namespace dbRede.SignalR
+public class mensagensHub : Hub
 {
-    public class mensagensHub : Hub
+    public async Task EnviarMensagem(Guid remetenteId, Guid destinatarioId, string conteudo)
     {
-        public override Task OnConnectedAsync()
+        await Clients.User(destinatarioId.ToString()).SendAsync("NovaMensagem", new
         {
-            Console.WriteLine($"client Cinectado:{Context.ConnectionId}");
-            return base.OnConnectedAsync();
-        }
+            remetenteId,
+            destinatarioId,
+            conteudo,
+            data_envio = DateTime.UtcNow
+        });
     }
 }
