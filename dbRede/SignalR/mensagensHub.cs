@@ -11,5 +11,10 @@ namespace dbRede.SignalR
             Console.WriteLine($"Cliente Conectado: {Context.ConnectionId}");
             return base.OnConnectedAsync();
         }
+        public async Task NovaMensagem(string mensagem)
+        {
+            // Lógica para enviar a mensagem
+            await Clients.All.SendAsync("ReceberMensagem", mensagem);
+        }
     }
 }
