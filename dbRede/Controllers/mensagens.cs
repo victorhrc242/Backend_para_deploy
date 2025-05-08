@@ -1,4 +1,5 @@
 ﻿using dbRede.Models;
+using dbRede.SignalR;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.SignalR;
 using Supabase;
@@ -9,9 +10,9 @@ using static Supabase.Postgrest.Constants;
 public class MensagensController : ControllerBase
 {
     private readonly Client _supabase;
-    private readonly IHubContext<MensagensHub> _hubContext;
+    private readonly IHubContext<mensagensHub> _hubContext;
 
-    public MensagensController(IConfiguration configuration, IHubContext<MensagensHub> hubContext)
+    public MensagensController(IConfiguration configuration, IHubContext<mensagensHub> hubContext)
     {
         var service = new SupabaseService(configuration);
         _supabase = service.GetClient();
