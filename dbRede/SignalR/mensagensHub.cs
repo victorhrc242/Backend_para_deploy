@@ -1,15 +1,22 @@
-﻿// Arquivo: Hubs/MensagensHub.cs
+﻿using Microsoft.AspNetCore.SignalR;
 
-using Microsoft.AspNetCore.SignalR;
-
-namespace dbRede.SignalR
+public class MensagensHub : Hub
 {
-    public class MensagensHub : Hub // <- Corrigido para PascalCase
+    public async Task ReceberMensagem(Mensagem mensagem)
     {
-        public async Task NovaMensagem(string mensagem)
-        {
-            Console.WriteLine($"Nova mensagem recebida: {mensagem}");
-            await Clients.All.SendAsync("ReceberMensagem", mensagem);
-        }
+        // Validação de dados
+        if (mensagem == null)
+            throw new ArgumentNullException(nameof(mensagem));
+
+        // Lógica para processar e salvar a mensagem
+        // Exemplo: enviar para outro cliente
+        await Clients.User(mensagem.idDestinatario).SendAsync("ReceberMensagem", mensagem);
     }
+}
+
+public class Mensagem
+{
+    public string idRemetente { get; set; }
+    public string idDestinatario { get; set; }
+    public string conteudo { get; set; }
 }
