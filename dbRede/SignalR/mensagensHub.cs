@@ -1,11 +1,13 @@
-﻿using dbRede.Models;
-using Microsoft.AspNetCore.SignalR;
+﻿using Microsoft.AspNetCore.SignalR;
 
-public class MensagensHub : Hub
+namespace dbRede.SignalR
 {
-    public async Task NovaMensagem(Mensagens mensagem)
+    public class mensagensHub : Hub
     {
-        // Lógica para enviar a mensagem ao destinatário
-        await Clients.User(mensagem.id_destinatario.ToString()).SendAsync("NovaMensagem", mensagem);
+        public override Task OnConnectedAsync()
+        {
+            Console.WriteLine($"client Cinectado:{Context.ConnectionId}");
+            return base.OnConnectedAsync();
+        }
     }
 }
