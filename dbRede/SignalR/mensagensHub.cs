@@ -1,15 +1,11 @@
-﻿using Microsoft.AspNetCore.SignalR;
+﻿using dbRede.Models;
+using Microsoft.AspNetCore.SignalR;
 
-public class mensagensHub : Hub
+public class MensagensHub : Hub
 {
-    public async Task EnviarMensagem(Guid remetenteId, Guid destinatarioId, string conteudo)
+    public async Task NovaMensagem(Mensagens mensagem)
     {
-        await Clients.User(destinatarioId.ToString()).SendAsync("NovaMensagem", new
-        {
-            remetenteId,
-            destinatarioId,
-            conteudo,
-            data_envio = DateTime.UtcNow
-        });
+        // Lógica para enviar a mensagem ao destinatário
+        await Clients.User(mensagem.id_destinatario.ToString()).SendAsync("NovaMensagem", mensagem);
     }
 }
