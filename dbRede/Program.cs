@@ -40,7 +40,7 @@ app.UseAuthorization();
 // Hub do SignalR
 app.MapHub<FeedHub>("/feedHub");
 app.MapHub<ComentarioHub>("/comentarioHub");
-app.MapHub<mensagensHub>("/mensagensHub");
+app.MapHub<MensagensHub>("/mensagensHub");
 // Controllers
 app.MapControllers();
 app.Run();
