@@ -9,9 +9,9 @@ using static Supabase.Postgrest.Constants;
 public class MensagensController : ControllerBase
 {
     private readonly Client _supabase;
-    private readonly IHubContext<mensagensHub> _hubContext;
+    private readonly IHubContext<MensagensHub> _hubContext;
 
-    public MensagensController(IConfiguration configuration, IHubContext<mensagensHub> hubContext)
+    public MensagensController(IConfiguration configuration, IHubContext<MensagensHub> hubContext)
     {
         var service = new SupabaseService(configuration);
         _supabase = service.GetClient();
