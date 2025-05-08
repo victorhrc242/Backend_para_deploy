@@ -8,6 +8,7 @@ namespace dbRede.SignalR
     {
         public async Task NovaMensagem(string mensagem)
         {
+            Console.WriteLine($"Nova mensagem recebida: {mensagem}");
             await Clients.All.SendAsync("ReceberMensagem", mensagem);
         }
     }
