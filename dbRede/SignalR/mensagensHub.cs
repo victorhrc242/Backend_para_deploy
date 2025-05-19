@@ -1,22 +1,15 @@
-﻿using Microsoft.AspNetCore.SignalR;
+﻿using dbRede.Models;
+using Microsoft.AspNetCore.SignalR;
 
 public class MensagensHub : Hub
 {
-    public async Task ReceberMensagem(Mensagem mensagem)
+    // Método para enviar uma mensagem através do SignalR
+    public async Task ReceberMensagem(Mensagens mensagem)
     {
-        // Validação de dados
         if (mensagem == null)
             throw new ArgumentNullException(nameof(mensagem));
 
-        // Lógica para processar e salvar a mensagem
-        // Exemplo: enviar para outro cliente
-        await Clients.User(mensagem.idDestinatario).SendAsync("ReceberMensagem", mensagem);
+        // Envia a mensagem para o destinatário específico
+        await Clients.User(mensagem.id_destinatario.ToString()).SendAsync("ReceberMensagem", mensagem);
     }
-}
-
-public class Mensagem
-{
-    public string idRemetente { get; set; }
-    public string idDestinatario { get; set; }
-    public string conteudo { get; set; }
 }

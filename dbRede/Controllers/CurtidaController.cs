@@ -87,6 +87,54 @@ namespace dbRede.Controllers
                 curtidas
             });
         }
+        [HttpPost("descurtir")]
+        public async Task<IActionResult> DescurtirPost([FromBody] CriarCurtidaRequest request)
+        {
+            // 1. Buscar a curtida existente
+            var curtidaExistente = await _supabase
+                .From<Curtida>()
+                .Where(c => c.PostId == request.PostId && c.UsuarioId == request.UsuarioId)
+                .Get();
+
+            var curtida = curtidaExistente.Models.FirstOrDefault();
+
+            if (curtida == null)
+                return NotFound(new { sucesso = false, mensagem = "Curtida não encontrada para este usuário no post." });
+
+            // 2. Remover a curtida
+            var respostaRemocao = await _supabase.From<Curtida>().Delete(curtida);
+
+            if (respostaRemocao == null || respostaRemocao.Models.Count == 0)
+                return StatusCode(500, new { sucesso = false, mensagem = "Erro ao remover curtida." });
+
+            // 3. Atualizar o número de curtidas do post
+            var respostaPost = await _supabase
+                .From<Post>()
+                .Where(p => p.Id == request.PostId)
+                .Get();
+
+            var post = respostaPost.Models.FirstOrDefault();
+
+            if (post == null)
+                return NotFound(new { sucesso = false, mensagem = "Post não encontrado." });
+
+            // Evita número negativo
+            post.Curtidas = Math.Max(0, post.Curtidas - 1);
+
+            var respostaAtualizacao = await _supabase.From<Post>().Update(post);
+
+            if (respostaAtualizacao == null || respostaAtualizacao.Models.Count == 0)
+                return StatusCode(500, new { sucesso = false, mensagem = "Erro ao atualizar o número de curtidas." });
+
+            // 4. Retornar resposta
+            return Ok(new
+            {
+                sucesso = true,
+                mensagem = "Curtida removida com sucesso.",
+                curtidasTotais = post.Curtidas
+            });
+        }
+
         public class CurtidaResponseDto
         {
             public Guid Id { get; set; }
