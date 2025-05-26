@@ -1,5 +1,6 @@
 ﻿using dbRede.Hubs;
 using dbRede.SignalR;
+using Microsoft.AspNetCore.SignalR;
 var builder = WebApplication.CreateBuilder(args);
 // Serviços
 builder.Services.AddControllers();
@@ -14,6 +15,7 @@ builder.Services.AddSwaggerGen(c =>
 });
 builder.Services.AddSingleton<SupabaseService>();
 builder.Services.AddSignalR();
+builder.Services.AddSingleton<IUserIdProvider, CustomUserIdProvider>();
 // ✅ Configure CORS corretamente
 builder.Services.AddCors(options =>
 {
