@@ -14,6 +14,7 @@ public class AmizadesController : ControllerBase
         _supabase = service.GetClient();
     }
 
+    // Enviar solicitação
     [HttpPost("solicitar")]
     public async Task<IActionResult> EnviarSolicitacao([FromBody] SeguidorDto dto)
     {
@@ -28,6 +29,19 @@ public class AmizadesController : ControllerBase
 
         await _supabase.From<Seguidor>().Insert(seguidor);
 
+        // Criar notificação para o usuário2, que tem que aceitar a solicitação
+        var notificacao = new Notificacao
+        {
+            Id = Guid.NewGuid(),
+            UsuarioId = dto.Usuario2,  // Usuário que precisa ver a solicitação
+            Tipo = "pendente",
+            ReferenciaId = seguidor.Id,
+            Mensagem = $"Você recebeu uma solicitação de amizade de {dto.Usuario1}.",
+            DataEnvio = DateTime.UtcNow
+        };
+
+        await _supabase.From<Notificacao>().Insert(notificacao);
+
         return Ok(new
         {
             sucesso = true,
@@ -35,7 +49,44 @@ public class AmizadesController : ControllerBase
             dados = new SeguidorResponseDto(seguidor)
         });
     }
+    // Solicitar e aceitar automaticamente
+    [HttpPost("solicitar-e-aceitar-automaticamente")]
+    public async Task<IActionResult> SolicitarEAceitarAutomaticamente([FromBody] SeguidorDto dto)
+    {
+        var seguidor = new Seguidor
+        {
+            Id = Guid.NewGuid(),
+            Usuario1 = dto.Usuario1,
+            Usuario2 = dto.Usuario2,
+            Status = "aceito",
+            DataSolicitacao = DateTime.UtcNow
+        };
 
+        await _supabase.From<Seguidor>().Insert(seguidor);
+
+        // Criar notificação para o usuário2, que o seguimento já foi aceito automaticamente
+        var notificacao = new Notificacao
+        {
+            Id = Guid.NewGuid(),
+            UsuarioId = dto.Usuario2,  // Usuário que foi seguido e precisa ver a ação
+            Tipo = "aceito",
+            ReferenciaId = seguidor.Id,
+            Mensagem = $"{dto.Usuario1} te seguiu de forma automática.",
+            DataEnvio = DateTime.UtcNow
+        };
+
+        await _supabase.From<Notificacao>().Insert(notificacao);
+
+        return Ok(new
+        {
+            sucesso = true,
+            mensagem = "Solicitação enviada e automaticamente aceita.",
+            dados = new SeguidorResponseDto(seguidor)
+        });
+    }
+    //     essa aceitação sera a  privada ou seja a que o usuario privada tera que fazer para segui
+    //     e fazer a aceitação 
+    // Aceitar solicitação
     [HttpPut("aceitar/{id}")]
     public async Task<IActionResult> AceitarSolicitacao(Guid id)
     {
@@ -50,13 +101,14 @@ public class AmizadesController : ControllerBase
         resultado.Status = "aceito";
         await _supabase.From<Seguidor>().Update(resultado);
 
+        // Criar notificação para o usuário1 que sua solicitação foi aceita
         var notificacao = new Notificacao
         {
             Id = Guid.NewGuid(),
-            UsuarioId = resultado.Usuario1,
-            Tipo = "seguindo", // Confirme se esse valor está permitido no Supabase
+            UsuarioId = resultado.Usuario1,  // Usuário que enviou a solicitação
+            Tipo = "aceito",
             ReferenciaId = resultado.Id,
-            Mensagem = "Sua solicitação de seguir foi aceita!",
+            Mensagem = $"Sua solicitação de amizade foi aceita por {resultado.Usuario2}.",
             DataEnvio = DateTime.UtcNow
         };
 
@@ -66,14 +118,11 @@ public class AmizadesController : ControllerBase
         {
             sucesso = true,
             mensagem = "Solicitação aceita com sucesso.",
-            dados = new
-            {
-                solicitacao = new SeguidorResponseDto(resultado),
-                notificacao
-            }
+            dados = new SeguidorResponseDto(resultado)
         });
     }
 
+    // Recusar solicitação
     [HttpPut("recusar/{id}")]
     public async Task<IActionResult> RecusarSolicitacao(Guid id)
     {
@@ -85,6 +134,19 @@ public class AmizadesController : ControllerBase
         resultado.Status = "recusado";
         await _supabase.From<Seguidor>().Update(resultado);
 
+        // Criar notificação para o usuário1 que sua solicitação foi recusada
+        var notificacao = new Notificacao
+        {
+            Id = Guid.NewGuid(),
+            UsuarioId = resultado.Usuario1,  // Usuário que enviou a solicitação
+            Tipo = "recusado",
+            ReferenciaId = resultado.Id,
+            Mensagem = $"Sua solicitação de amizade foi recusada por {resultado.Usuario2}.",
+            DataEnvio = DateTime.UtcNow
+        };
+
+        await _supabase.From<Notificacao>().Insert(notificacao);
+
         return Ok(new
         {
             sucesso = true,
@@ -92,7 +154,7 @@ public class AmizadesController : ControllerBase
             dados = new SeguidorResponseDto(resultado)
         });
     }
-
+    //fim disso
     [HttpGet("seguindo/{usuarioId}")]
     public async Task<IActionResult> GetSeguindo(Guid usuarioId)
     {

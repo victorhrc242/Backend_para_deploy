@@ -19,19 +19,39 @@ namespace dbRede.Controllers
         [HttpGet("{usuarioId}")]
         public async Task<IActionResult> GetNotificacoes(Guid usuarioId)
         {
-            var resposta = await _supabase
-                .From<Notificacao>()
-                .Where(n => n.UsuarioId == usuarioId)
-                .Order("data_envio", Supabase.Postgrest.Constants.Ordering.Descending)
-                .Get();
-
-            return Ok(new
+            try
             {
-                usuarioId,
-                total = resposta.Models.Count,
-                notificacoes = resposta.Models
-            });
-        }
+                // Consulta as notificações do Supabase para o usuário fornecido
+                var resposta = await _supabase
+                    .From<Notificacao>()
+                    .Where(n => n.UsuarioId == usuarioId)
+                    .Order("data_envio", Supabase.Postgrest.Constants.Ordering.Descending)
+                    .Get();
+
+                // Mapeia os dados do modelo para o DTO
+                var notificacoesDto = resposta.Models.Select(n => new NotificacaoDto
+                {
+                    Id = n.Id,
+                    UsuarioId = n.UsuarioId,
+                    Tipo = n.Tipo,
+                    Mensagem = n.Mensagem,
+                    DataEnvio = n.DataEnvio
+                }).ToList();
+
+                // Retorna os dados no formato JSON
+                return Ok(new
+                {
+                    usuarioId,
+                    total = notificacoesDto.Count,
+                    notificacoes = notificacoesDto
+                });
+            }
+            catch (Exception ex)
+            {
+                // Se ocorrer um erro, retorna uma resposta de erro
+                return StatusCode(500, new { mensagem = "Erro ao buscar notificações", erro = ex.Message });
+            }
+        }   
 
         [HttpPost]
         public async Task<IActionResult> CriarNotificacao([FromBody] NotificacaoDto dto)
@@ -41,7 +61,7 @@ namespace dbRede.Controllers
                 Id = Guid.NewGuid(),
                 UsuarioId = dto.UsuarioId,
                 Tipo = dto.Tipo,
-                ReferenciaId = dto.ReferenciaId,
+                ReferenciaId = dto.Id,
                 Mensagem = dto.Mensagem,
                 DataEnvio = DateTime.UtcNow
             };
@@ -75,12 +95,14 @@ namespace dbRede.Controllers
                 idRemovido = id
             });
         }
+  
         public class NotificacaoDto
         {
+            public Guid Id { get; set; }
             public Guid UsuarioId { get; set; }
             public string Tipo { get; set; }
-            public Guid ReferenciaId { get; set; }
             public string Mensagem { get; set; }
+            public DateTime DataEnvio { get; set; }
         }
 
     }
