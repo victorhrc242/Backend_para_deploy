@@ -29,6 +29,14 @@ public class AmizadesController : ControllerBase
 
         await _supabase.From<Seguidor>().Insert(seguidor);
 
+        // Buscar nome do Usuario1 (internamente, após inserir o Seguidor)
+        var usuario1 = await _supabase.From<User>().Where(u => u.id == dto.Usuario1).Single();
+        var nomeUsuario1 = usuario1?.Nome ?? "Usuário Desconhecido";
+
+        // Buscar nome do Usuario2 (internamente, após inserir o Seguidor)
+        var usuario2 = await _supabase.From<User>().Where(u => u.id == dto.Usuario2).Single();
+        var nomeUsuario2 = usuario2?.Nome ?? "Usuário Desconhecido";
+
         // Criar notificação para o usuário2, que tem que aceitar a solicitação
         var notificacao = new Notificacao
         {
@@ -36,7 +44,7 @@ public class AmizadesController : ControllerBase
             UsuarioId = dto.Usuario2,  // Usuário que precisa ver a solicitação
             Tipo = "pendente",
             ReferenciaId = seguidor.Id,
-            Mensagem = $"Você recebeu uma solicitação de amizade de {dto.Usuario1}.",
+            Mensagem = $"{nomeUsuario1} Esta pedindo para te seguir",
             DataEnvio = DateTime.UtcNow
         };
 
@@ -64,6 +72,14 @@ public class AmizadesController : ControllerBase
 
         await _supabase.From<Seguidor>().Insert(seguidor);
 
+        // Buscar nome do Usuario1
+        var usuario1 = await _supabase.From<User>().Where(u => u.id == dto.Usuario1).Single();
+        var nomeUsuario1 = usuario1?.Nome ?? "Usuário Desconhecido";
+
+        // Buscar nome do Usuario2
+        var usuario2 = await _supabase.From<User>().Where(u => u.id == dto.Usuario2).Single();
+        var nomeUsuario2 = usuario2?.Nome ?? "Usuário Desconhecido";
+
         // Criar notificação para o usuário2, que o seguimento já foi aceito automaticamente
         var notificacao = new Notificacao
         {
@@ -71,7 +87,7 @@ public class AmizadesController : ControllerBase
             UsuarioId = dto.Usuario2,  // Usuário que foi seguido e precisa ver a ação
             Tipo = "aceito",
             ReferenciaId = seguidor.Id,
-            Mensagem = $"{dto.Usuario1} te seguiu de forma automática.",
+            Mensagem = $"{nomeUsuario1} Segui Voce",
             DataEnvio = DateTime.UtcNow
         };
 
@@ -101,6 +117,13 @@ public class AmizadesController : ControllerBase
         resultado.Status = "aceito";
         await _supabase.From<Seguidor>().Update(resultado);
 
+        // Buscar nome do Usuario1 e Usuario2
+        var usuario1 = await _supabase.From<User>().Where(u => u.id == resultado.Usuario1).Single();
+        var nomeUsuario1 = usuario1?.Nome ?? "Usuário Desconhecido"; // Se não encontrar, nome será "Usuário Desconhecido"
+
+        var usuario2 = await _supabase.From<User>().Where(u => u.id == resultado.Usuario2).Single();
+        var nomeUsuario2 = usuario2?.Nome ?? "Usuário Desconhecido";
+
         // Criar notificação para o usuário1 que sua solicitação foi aceita
         var notificacao = new Notificacao
         {
@@ -108,7 +131,7 @@ public class AmizadesController : ControllerBase
             UsuarioId = resultado.Usuario1,  // Usuário que enviou a solicitação
             Tipo = "aceito",
             ReferenciaId = resultado.Id,
-            Mensagem = $"Sua solicitação de amizade foi aceita por {resultado.Usuario2}.",
+            Mensagem = $"{nomeUsuario2} aceitou sua solicitação para seguila", // Usando nome do usuario2
             DataEnvio = DateTime.UtcNow
         };
 
@@ -121,7 +144,6 @@ public class AmizadesController : ControllerBase
             dados = new SeguidorResponseDto(resultado)
         });
     }
-
     // Recusar solicitação
     [HttpPut("recusar/{id}")]
     public async Task<IActionResult> RecusarSolicitacao(Guid id)
@@ -134,6 +156,13 @@ public class AmizadesController : ControllerBase
         resultado.Status = "recusado";
         await _supabase.From<Seguidor>().Update(resultado);
 
+        // Buscar nome do Usuario1 e Usuario2
+        var usuario1 = await _supabase.From<User>().Where(u => u.id == resultado.Usuario1).Single();
+        var nomeUsuario1 = usuario1?.Nome ?? "Usuário Desconhecido";
+
+        var usuario2 = await _supabase.From<User>().Where(u => u.id == resultado.Usuario2).Single();
+        var nomeUsuario2 = usuario2?.Nome ?? "Usuário Desconhecido";
+
         // Criar notificação para o usuário1 que sua solicitação foi recusada
         var notificacao = new Notificacao
         {
@@ -141,7 +170,7 @@ public class AmizadesController : ControllerBase
             UsuarioId = resultado.Usuario1,  // Usuário que enviou a solicitação
             Tipo = "recusado",
             ReferenciaId = resultado.Id,
-            Mensagem = $"Sua solicitação de amizade foi recusada por {resultado.Usuario2}.",
+            Mensagem = $"{nomeUsuario2} Recusou sua solicitação para seguila",// Usando nome do usuario2
             DataEnvio = DateTime.UtcNow
         };
 
@@ -154,6 +183,7 @@ public class AmizadesController : ControllerBase
             dados = new SeguidorResponseDto(resultado)
         });
     }
+
     //fim disso
     [HttpGet("seguindo/{usuarioId}")]
     public async Task<IActionResult> GetSeguindo(Guid usuarioId)
