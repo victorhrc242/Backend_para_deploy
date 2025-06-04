@@ -20,8 +20,9 @@ namespace dbRede.Models
         public string Conteudo { get; set; }
 
         [Column("imagem")]
-        public string Imagem { get; set; }
-
+        public string? Imagem { get; set; }
+        [Column("video")]
+        public string? Video { get; set; }
         [Column("data_postagem")]
         public DateTime DataPostagem { get; set; }
 

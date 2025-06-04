@@ -217,12 +217,17 @@ namespace dbRede.Controllers
         [HttpPost("criar")]
         public async Task<IActionResult> CriarPost([FromBody] CriarPostRequest novoPost)
         {
+            if (string.IsNullOrEmpty(novoPost.Imagem) && string.IsNullOrEmpty(novoPost.Video))
+            {
+                return BadRequest(new { erro = "Você deve fornecer uma imagem ou um vídeo." });
+            }
             var post = new Post
             {
                 Id = Guid.NewGuid(),
                 AutorId = novoPost.AutorId,
                 Conteudo = novoPost.Conteudo,
                 Imagem = novoPost.Imagem,
+                Video = novoPost.Video,
                 DataPostagem = DateTime.UtcNow,
                 Curtidas = 0,
                 Comentarios = 0,
@@ -249,6 +254,7 @@ namespace dbRede.Controllers
                 AutorId = postComAutor.AutorId,
                 Conteudo = postComAutor.Conteudo,
                 Imagem = postComAutor.Imagem,
+                Video = postComAutor.Video,
                 DataPostagem = postComAutor.DataPostagem,
                 Curtidas = postComAutor.Curtidas,
                 Comentarios = postComAutor.Comentarios,
@@ -271,7 +277,8 @@ namespace dbRede.Controllers
         {
             public Guid AutorId { get; set; }
             public string Conteudo { get; set; }
-            public string Imagem { get; set; }
+            public string? Imagem { get; set; }
+            public string? Video { get; set; }
             public List<string> Tags { get; set; }
         }
 
@@ -281,6 +288,7 @@ namespace dbRede.Controllers
             public Guid AutorId { get; set; }
             public string Conteudo { get; set; }
             public string Imagem { get; set; }
+            public string Video { get; set; }
             public DateTime DataPostagem { get; set; }
             public int Curtidas { get; set; }
             public int Comentarios { get; set; }
