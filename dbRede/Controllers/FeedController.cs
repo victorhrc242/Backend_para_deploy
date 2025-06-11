@@ -132,90 +132,112 @@ namespace dbRede.Controllers
                 return StatusCode(500, new { erro = "Erro interno ao buscar os posts do usuário.", detalhes = ex.Message });
             }
         }
-        // esse lista tudo pelo jeito
         [HttpGet("feed-completo/{usuarioId}")]
         public async Task<IActionResult> GetFeedCompleto(Guid usuarioId)
         {
-            // 1. Buscar os usuários que o usuário segue
-            var seguindoResponse = await _supabase
+            int page = 1; int pageSize = 10;
+            // 1. Buscar usuários seguidos
+            var seguindo = await _supabase
                 .From<Seguidor>()
                 .Where(s => s.Usuario1 == usuarioId && s.Status == "aceito")
                 .Get();
 
-            var idsSeguidos = seguindoResponse.Models.Select(s => s.Usuario2).ToList();
+            var idsSeguidos = seguindo.Models.Select(s => s.Usuario2).ToList();
 
-            // 2. Buscar posts de todos os usuários seguidos
-            var postsSeguidos = new List<Post>();
-            if (idsSeguidos.Any())
+            // 2. Buscar curtidas e comentários
+            var curtidas = await _supabase.From<Curtida>().Where(c => c.UsuarioId == usuarioId).Get();
+            var comentarios = await _supabase.From<Comentario>().Where(c => c.AutorId == usuarioId).Get();
+
+            // 3. Buscar posts interagidos
+            var idsInteragidos = curtidas.Models.Select(c => c.PostId)
+                .Concat(comentarios.Models.Select(c => c.PostId))
+                .Distinct().ToList();
+
+            var postsInteragidos = new List<Post>();
+            if (idsInteragidos.Any())
             {
-                var respostaPosts = await _supabase
+                var resp = await _supabase
                     .From<Post>()
-                    .Filter("autor_id", Supabase.Postgrest.Constants.Operator.In, idsSeguidos)
-                    .Order("data_postagem", Supabase.Postgrest.Constants.Ordering.Descending)
+                    .Filter("id", Operator.In, idsInteragidos)
                     .Get();
 
-                postsSeguidos = respostaPosts.Models;
+                postsInteragidos = resp.Models;
             }
 
-            // 3. Buscar tags dos posts curtidos pelo usuário
-            var curtidas = await _supabase
-                .From<Curtida>()
-                .Where(c => c.UsuarioId == usuarioId)
-                .Get();
-
-            var postIdsCurtidos = curtidas.Models.Select(c => c.PostId).Distinct().ToList();
-
-            var postsCurtidos = new List<Post>();
-            if (postIdsCurtidos.Any())
-            {
-                var respostaPostsCurtidos = await _supabase
-                    .From<Post>()
-                    .Filter("id", Supabase.Postgrest.Constants.Operator.In, postIdsCurtidos)
-                    .Get();
-
-                var tagsCurtidas = respostaPostsCurtidos.Models
-                    .Where(p => p.Tags != null)
-                    .SelectMany(p => p.Tags)
-                    .Distinct()
-                    .ToList();
-
-                if (tagsCurtidas.Any())
-                {
-                    var respostaPostsPorTag = await _supabase
-                        .From<Post>()
-                        .Get();
-
-                    postsCurtidos = respostaPostsPorTag.Models
-                        .Where(p => p.Tags != null && p.Tags.Any(tag => tagsCurtidas.Contains(tag)))
-                        .ToList();
-                }
-            }
-
-            // 4. Combinar os resultados (sem duplicatas)
-            var todosPosts = postsSeguidos
-                .Concat(postsCurtidos)
-                .GroupBy(p => p.Id)
-                .Select(g => g.First())
-                .OrderByDescending(p => p.DataPostagem)
+            // 4. Extrair tags
+            var tagsCurtidas = postsInteragidos
+                .Where(p => p.Tags != null)
+                .SelectMany(p => p.Tags)
+                .Distinct()
                 .ToList();
 
-            // 5. Montar DTOs com nome do autor
-            var postsComAutores = todosPosts.Select(post => new PostDTO
+            // 5. Autores com mais interações
+            var autoresInteragidos = curtidas.Models
+                .Select(c => c.UsuarioId)
+                .Concat(comentarios.Models.Select(c => c.AutorId))
+                .Where(id => idsSeguidos.Contains(id))
+                .GroupBy(id => id)
+                .OrderByDescending(g => g.Count())
+                .Select(g => g.Key)
+                .ToList();
+
+            // 6. Buscar todos os posts relevantes
+            var todosPosts = await _supabase.From<Post>().Order("data_postagem", Ordering.Descending).Get();
+
+            // 7. Agrupamento por tipo:
+            var recentesSeguidos = todosPosts.Models
+                .Where(p => idsSeguidos.Contains(p.AutorId) && p.DataPostagem >= DateTime.UtcNow.AddDays(-2))
+                .OrderByDescending(p => autoresInteragidos.Contains(p.AutorId) ? 1 : 0)
+                .ThenByDescending(p => p.DataPostagem);
+
+            var recomendadosPorTags = todosPosts.Models
+                .Where(p => !idsSeguidos.Contains(p.AutorId) &&
+                            p.Tags != null &&
+                            p.Tags.Any(tag => tagsCurtidas.Contains(tag)) &&
+                            p.DataPostagem >= DateTime.UtcNow.AddDays(-2))
+                .OrderByDescending(p => p.DataPostagem);
+
+            var antigosInteragidos = postsInteragidos
+                .Where(p => p.DataPostagem < DateTime.UtcNow.AddDays(-2))
+                .OrderByDescending(p => p.DataPostagem);
+
+            // 8. Junta tudo, remove duplicados e aplica paginação
+            var feedCompleto = recentesSeguidos
+                .Concat(recomendadosPorTags)
+                .Concat(antigosInteragidos)
+                .GroupBy(p => p.Id)
+                .Select(g => g.First())
+                .Skip((page - 1) * pageSize)
+                .Take(pageSize)
+                .ToList();
+
+            // 9. Carrega nomes dos autores
+            var autorIds = feedCompleto.Select(p => p.AutorId).Distinct().ToList();
+            var autores = await _supabase
+                .From<User>()
+                .Filter("id", Operator.In, autorIds)
+                .Get();
+
+            var mapaAutores = autores.Models.ToDictionary(u => u.id, u => u.Nome);
+
+            // 10. Monta DTOs
+            var resultado = feedCompleto.Select(post => new PostDTO
             {
                 Id = post.Id,
                 Conteudo = post.Conteudo,
                 Imagem = post.Imagem,
-                Video=post.Video,
+                Video = post.Video,
                 Tags = post.Tags,
                 DataPostagem = post.DataPostagem,
                 Curtidas = post.Curtidas,
                 Comentarios = post.Comentarios,
                 AutorId = post.AutorId,
-                NomeAutor = post.Usuarios?.Nome ?? "Desconhecido"
+                NomeAutor = mapaAutores.TryGetValue(post.AutorId, out var nome) ? nome : "Desconhecido"
             });
 
-            return Ok(postsComAutores);
+            return Ok(resultado);
         }
+
 
 
         [HttpPost("criar")]
