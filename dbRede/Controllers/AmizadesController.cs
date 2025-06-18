@@ -256,6 +256,44 @@ public class AmizadesController : ControllerBase
             total = resposta.Models.Count
         });
     }
+    // deleter
+    [HttpDelete("deseguir")]
+    public async Task<IActionResult> Deseguir([FromQuery] Guid usuario1, [FromQuery] Guid usuario2)
+    {
+        // Verificar se usuario1 segue usuario2
+        var seguindo = await _supabase
+            .From<Seguidor>()
+            .Where(s => s.Usuario1 == usuario1 && s.Usuario2 == usuario2 && s.Status == "aceito")
+            .Single();
+
+        // Verificar se usuario2 segue usuario1
+        var sendoSeguido = await _supabase
+            .From<Seguidor>()
+            .Where(s => s.Usuario1 == usuario2 && s.Usuario2 == usuario1 && s.Status == "aceito")
+            .Single();
+
+        bool seguiu = false;
+
+        if (seguindo != null)
+        {
+            // Aqui pode apagar ou atualizar o status para "cancelado" ou "recusado"
+            await _supabase.From<Seguidor>().Delete(seguindo);
+            seguiu = true;
+        }
+
+        if (sendoSeguido != null)
+        {
+            await _supabase.From<Seguidor>().Delete(sendoSeguido);
+            seguiu = true;
+        }
+
+        if (!seguiu)
+        {
+            return NotFound(new { sucesso = false, mensagem = "Nenhuma relação de seguimento encontrada entre os usuários." });
+        }
+
+        return Ok(new { sucesso = true, mensagem = "Deseguir realizado com sucesso." });
+    }
 
     public class SeguidorDto
     {

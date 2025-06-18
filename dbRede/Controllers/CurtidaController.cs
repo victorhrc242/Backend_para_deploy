@@ -134,7 +134,28 @@ namespace dbRede.Controllers
                 curtidasTotais = post.Curtidas
             });
         }
-
+        //delete
+        /// <summary>
+        /// usado internamente
+        /// </summary>
+        /// <param name="id"></param>
+        /// <returns></returns>
+        [HttpDelete("{id}")]
+        public async Task<IActionResult> deletar(Guid id)
+        {
+            var resultado = await _supabase
+                .From<Curtida>()
+                .Where(n => n.Id == id)
+                .Single();
+            if (resultado == null)
+                return NotFound(new { erro = "Curtida não encontrada." });
+            await _supabase.From<Curtida>().Delete(resultado);
+            return Ok(new
+            {
+                mensagem = "curtida removida com sucesso.",
+                idRemovido = id
+            });
+        }
         public class CurtidaResponseDto
         {
             public Guid Id { get; set; }

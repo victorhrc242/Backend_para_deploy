@@ -176,6 +176,26 @@ public class MensagensController : ControllerBase
             }
         });
     }
+
+
+    //deletar mensagem
+    [HttpDelete("{id}")]
+    public async Task<IActionResult>deletar(Guid id)
+    {
+        var resultado = await _supabase.From<Mensagens>()
+            .Where(n => n.Id == id)
+            .Single();
+
+        if (resultado == null)
+            return NotFound(new { erro = "Mensagen Não encontrada" });
+        await _supabase.From<Mensagens>().Delete(resultado);
+        return Ok(new
+        {
+            mensagem = "Mensagem Apagada com sucesso.",
+            IdRemovido = id
+        });
+    }
+    
     public class EnviarMensagemRequest
     {
         public Guid IdRemetente { get; set; }

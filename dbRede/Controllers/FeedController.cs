@@ -298,6 +298,28 @@ namespace dbRede.Controllers
             });
         }
 
+
+        // delete posts
+        [HttpDelete("{id}")]
+        public async Task<IActionResult>deletar(Guid id)
+        {
+            var resultado = await _supabase
+                .From<Post>()
+                .Where(n => n.Id == id)
+                .Single();
+            if(resultado == null)
+                return NotFound(new { erro = "Post não encontrado" });
+            await _supabase.From<Post>().Delete(resultado);
+
+            return Ok(new
+            {
+                mensagem = "Post apagado com sucesso",
+                idRemovido = id
+            });
+            
+        }
+
+
         // começos de DTOS
         public class CriarPostRequest
         {

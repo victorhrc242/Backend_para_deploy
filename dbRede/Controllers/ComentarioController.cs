@@ -16,7 +16,7 @@ public class ComentarioController : ControllerBase
     private readonly Client _supabase;
     private readonly IHubContext<ComentarioHub> _HubContext;
 
-    public ComentarioController(IConfiguration configuration,IHubContext <ComentarioHub> hubContext)
+    public ComentarioController(IConfiguration configuration, IHubContext<ComentarioHub> hubContext)
     {
         var service = new SupabaseService(configuration);
         _supabase = service.GetClient();
@@ -92,7 +92,26 @@ public class ComentarioController : ControllerBase
             comentarios
         });
     }
+    //deletar
+    [HttpDelete("{id}")]
+    public async Task<IActionResult> Deletar(Guid id)
+    {
+        var resultado = await _supabase
+            .From<Comentario>()
+            .Where(n => n.Id == id)
+            .Single();
 
+        if (resultado == null)
+            return NotFound(new { erro = "comentario não encontrada." });
+
+        await _supabase.From<Comentario>().Delete(resultado);
+
+        return Ok(new
+        {
+            mensagem = "comentario removida com sucesso.",
+            idRemovido = id
+        });
+    }
     public class CriarComentarioRequest
     {
         public Guid PostId { get; set; }
