@@ -204,6 +204,11 @@ public class AmizadesController : ControllerBase
         });
     }
 
+
+
+
+
+
     [HttpGet("seguidores/{usuarioId}")]
     public async Task<IActionResult> GetSeguidores(Guid usuarioId)
     {
@@ -294,6 +299,28 @@ public class AmizadesController : ControllerBase
 
         return Ok(new { sucesso = true, mensagem = "Deseguir realizado com sucesso." });
     }
+    [HttpGet("segue")]
+    public async Task<IActionResult> VerificaSeSegue([FromQuery] Guid usuario1, [FromQuery] Guid usuario2)
+    {
+        var resposta = await _supabase
+            .From<Seguidor>()
+            .Where(s => s.Usuario1 == usuario1)
+            .Where(s => s.Usuario2 == usuario2)
+            .Where(s => s.Status == "aceito")
+            .Get();
+
+        bool estaSeguindo = resposta.Models.Any();
+
+        return Ok(new
+        {
+            sucesso = true,
+            usuario1,
+            usuario2,
+            estaSeguindo
+        });
+    }
+
+
 
     public class SeguidorDto
     {
