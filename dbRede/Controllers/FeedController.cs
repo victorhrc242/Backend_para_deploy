@@ -5,6 +5,7 @@ using static Supabase.Postgrest.Constants;
 using static dbRede.Controllers.FeedController;
 using Microsoft.AspNetCore.SignalR;
 using dbRede.Hubs;
+using Microsoft.Extensions.Hosting;
 
 namespace dbRede.Controllers
 {
@@ -317,6 +318,37 @@ namespace dbRede.Controllers
                 idRemovido = id
             });
             
+        }
+
+        [HttpGet("videos")]
+        public async Task<IActionResult> GetVideos()
+        {
+            var resultado = await _supabase
+                .From<Post>()
+                .Select("*, users (nome)")
+                .Get();
+
+            if (resultado == null)
+                return StatusCode(500, new { erro = "Erro ao acessar os posts com vídeo no Supabase." });
+
+            var brasilTimeZone = TimeZoneInfo.FindSystemTimeZoneById("E. South America Standard Time");
+
+            var videosComAutores = resultado.Models
+                .Where(post => !string.IsNullOrEmpty(post.Video))
+                .Select(post => new PostDTO
+                {
+                    Id = post.Id,
+                    Conteudo = post.Conteudo,
+                    Video = post.Video,
+                    Tags = post.Tags,
+                    DataPostagem = TimeZoneInfo.ConvertTimeFromUtc(post.DataPostagem, brasilTimeZone),
+                    Curtidas = post.Curtidas,
+                    Comentarios = post.Comentarios,
+                    AutorId = post.AutorId,
+                    NomeAutor = post.Usuarios?.Nome ?? "Desconhecido"
+                });
+
+            return Ok(videosComAutores);
         }
 
 

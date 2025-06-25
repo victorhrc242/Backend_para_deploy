@@ -43,6 +43,7 @@ app.UseAuthorization();
 app.MapHub<FeedHub>("/feedHub");
 app.MapHub<ComentarioHub>("/comentarioHub");
 app.MapHub<MensagensHub>("/mensagensHub");
+app.MapHub<CurtidaHub>("/curtidaHub");
 // Controllers
 app.MapControllers();
 app.Run();

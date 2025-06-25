@@ -2,6 +2,7 @@
 using dbRede.Models;
 using Supabase;
 using static dbRede.Controllers.CurtidaController.CurtidaResponseDto;
+using Microsoft.AspNetCore.SignalR;
 
 namespace dbRede.Controllers
 {
@@ -10,11 +11,12 @@ namespace dbRede.Controllers
     public class CurtidaController : ControllerBase
     {
         private readonly Client _supabase;
-
-        public CurtidaController(IConfiguration configuration)
+        private readonly IHubContext<CurtidaHub> _hubContext;
+        public CurtidaController(IConfiguration configuration, IHubContext<CurtidaHub> hubContext)
         {
             var service = new SupabaseService(configuration);
             _supabase = service.GetClient();
+            _hubContext = hubContext;
         }
 
         [HttpPost("curtir")]
@@ -53,7 +55,10 @@ namespace dbRede.Controllers
             if (respostaAtualizacao == null || respostaAtualizacao.Models.Count == 0)
                 return StatusCode(500, new { sucesso = false, mensagem = "Erro ao atualizar o número de curtidas." });
 
-            // 4. Retornar resposta
+            // 4. Notificar todos os clientes conectados via SignalR
+            await _hubContext.Clients.All.SendAsync("ReceberCurtida", request.PostId, request.UsuarioId, true);
+
+            // 5. Retornar resposta
             return Ok(new
             {
                 sucesso = true,
@@ -126,7 +131,11 @@ namespace dbRede.Controllers
             if (respostaAtualizacao == null || respostaAtualizacao.Models.Count == 0)
                 return StatusCode(500, new { sucesso = false, mensagem = "Erro ao atualizar o número de curtidas." });
 
-            // 4. Retornar resposta
+            // 4. Notificar todos os clientes conectados via SignalR
+            // Envia a notificação informando que o post foi descurtido.
+            await _hubContext.Clients.All.SendAsync("ReceberCurtida", request.PostId, request.UsuarioId, false);
+
+            // 5. Retornar resposta
             return Ok(new
             {
                 sucesso = true,

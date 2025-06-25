@@ -173,31 +173,40 @@ public class RegisterController : ControllerBase
 
         return Ok(usuarioDto);
     }
+
+
+
+
     [HttpGet("buscar-por-nome/{nome}")]
-    public async Task<IActionResult> ObterUsuarioPorNome(string nome)
+    public async Task<IActionResult> ObterUsuariosPorNome(string nome)
     {
         var resultado = await _supabase
             .From<User>()
-            .Where(u => u.Nome_usuario == nome)
+            .Filter("Nome-usuario", Operator.ILike, $"%{nome}%") // corrigido aqui
             .Get();
 
-        var usuario = resultado.Models.FirstOrDefault();
-
-        if (usuario == null)
-            return NotFound(new { erro = "Usuário não encontrado" });
-
-        var usuarioDto = new UserDto
+        if (!resultado.ResponseMessage.IsSuccessStatusCode)
         {
-            Id = usuario.id,
-            Nome_usuario = usuario.Nome_usuario,
-            Nome=usuario.Nome,
-            biografia = usuario.biografia,
-            Email = usuario.Email,
-            imagem= usuario.FotoPerfil
-        };
+            return StatusCode((int)resultado.ResponseMessage.StatusCode, new { erro = "Erro na consulta ao banco" });
+        }
 
-        return Ok(usuarioDto);
+        var modelos = resultado.Models;
+        if (modelos == null || modelos.Count == 0)
+            return NotFound(new { erro = "Nenhum usuário encontrado" });
+
+        var dto = modelos.Select(u => new UserDto
+        {
+            Id = u.id,
+            Nome_usuario = u.Nome_usuario,
+            imagem = u.FotoPerfil
+        }).ToList();
+
+        return Ok(dto);
     }
+
+
+
+
     public class UserDto
     {
         public Guid Id { get; set; }
