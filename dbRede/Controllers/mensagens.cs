@@ -195,7 +195,63 @@ public class MensagensController : ControllerBase
             IdRemovido = id
         });
     }
-    
+    // lista so os usuarios em que o usuario principal segue 
+    [HttpGet("conversas/{usuarioId}")]
+    public async Task<IActionResult> GetUsuariosComConversas(Guid usuarioId)
+    {
+        try
+        {
+            // Busca todas as mensagens onde o usuário é remetente ou destinatário
+            var mensagens = await _supabase
+                .From<Mensagens>()
+                .Where(m => m.id_remetente == usuarioId || m.id_destinatario == usuarioId)
+                .Get();
+
+            // Coleta os IDs dos outros usuários com quem ele trocou mensagens
+            var outrosUsuariosIds = mensagens.Models
+                .Select(m => m.id_remetente == usuarioId ? m.id_destinatario : m.id_remetente)
+                .Distinct()
+                .ToList();
+
+            var usuariosComConversa = new List<object>();
+
+            foreach (var outroId in outrosUsuariosIds)
+            {
+                var userResult = await _supabase
+                    .From<User>() // <-- troque se a sua entidade de usuário tiver outro nome
+                    .Where(u => u.id == outroId)
+                    .Get();
+
+                var user = userResult.Models.FirstOrDefault();
+                if (user != null)
+                {
+                    usuariosComConversa.Add(new
+                    {
+                        user.id,
+                        user.Nome_usuario,
+                        user.FotoPerfil
+                    });
+                }
+            }
+
+            return Ok(new
+            {
+                sucesso = true,
+                total = usuariosComConversa.Count,
+                usuarios = usuariosComConversa
+            });
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new
+            {
+                sucesso = false,
+                mensagem = "Erro ao buscar usuários com conversas.",
+                erro = ex.Message
+            });
+        }
+    }
+
     public class EnviarMensagemRequest
     {
         public Guid IdRemetente { get; set; }
