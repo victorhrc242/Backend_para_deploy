@@ -31,11 +31,11 @@ public class AmizadesController : ControllerBase
 
         // Buscar nome do Usuario1 (internamente, após inserir o Seguidor)
         var usuario1 = await _supabase.From<User>().Where(u => u.id == dto.Usuario1).Single();
-        var nomeUsuario1 = usuario1?.Nome ?? "Usuário Desconhecido";
+        var nomeUsuario1 = usuario1?.Nome_usuario ?? "Usuário Desconhecido";
 
         // Buscar nome do Usuario2 (internamente, após inserir o Seguidor)
         var usuario2 = await _supabase.From<User>().Where(u => u.id == dto.Usuario2).Single();
-        var nomeUsuario2 = usuario2?.Nome ?? "Usuário Desconhecido";
+        var nomeUsuario2 = usuario2?.Nome_usuario ?? "Usuário Desconhecido";
 
         // Criar notificação para o usuário2, que tem que aceitar a solicitação
         var notificacao = new Notificacao
@@ -74,11 +74,11 @@ public class AmizadesController : ControllerBase
 
         // Buscar nome do Usuario1
         var usuario1 = await _supabase.From<User>().Where(u => u.id == dto.Usuario1).Single();
-        var nomeUsuario1 = usuario1?.Nome ?? "Usuário Desconhecido";
+        var nomeUsuario1 = usuario1?.Nome_usuario ?? "Usuário Desconhecido";
 
         // Buscar nome do Usuario2
         var usuario2 = await _supabase.From<User>().Where(u => u.id == dto.Usuario2).Single();
-        var nomeUsuario2 = usuario2?.Nome ?? "Usuário Desconhecido";
+        var nomeUsuario2 = usuario2?.Nome_usuario ?? "Usuário Desconhecido";
 
         // Criar notificação para o usuário2, que o seguimento já foi aceito automaticamente
         var notificacao = new Notificacao
@@ -119,10 +119,10 @@ public class AmizadesController : ControllerBase
 
         // Buscar nome do Usuario1 e Usuario2
         var usuario1 = await _supabase.From<User>().Where(u => u.id == resultado.Usuario1).Single();
-        var nomeUsuario1 = usuario1?.Nome ?? "Usuário Desconhecido"; // Se não encontrar, nome será "Usuário Desconhecido"
+        var nomeUsuario1 = usuario1?.Nome_usuario ?? "Usuário Desconhecido"; // Se não encontrar, nome será "Usuário Desconhecido"
 
         var usuario2 = await _supabase.From<User>().Where(u => u.id == resultado.Usuario2).Single();
-        var nomeUsuario2 = usuario2?.Nome ?? "Usuário Desconhecido";
+        var nomeUsuario2 = usuario2?.Nome_usuario ?? "Usuário Desconhecido";
 
         // Criar notificação para o usuário1 que sua solicitação foi aceita
         var notificacao = new Notificacao
@@ -158,10 +158,10 @@ public class AmizadesController : ControllerBase
 
         // Buscar nome do Usuario1 e Usuario2
         var usuario1 = await _supabase.From<User>().Where(u => u.id == resultado.Usuario1).Single();
-        var nomeUsuario1 = usuario1?.Nome ?? "Usuário Desconhecido";
+        var nomeUsuario1 = usuario1?.Nome_usuario ?? "Usuário Desconhecido";
 
         var usuario2 = await _supabase.From<User>().Where(u => u.id == resultado.Usuario2).Single();
-        var nomeUsuario2 = usuario2?.Nome ?? "Usuário Desconhecido";
+        var nomeUsuario2 = usuario2?.Nome_usuario ?? "Usuário Desconhecido";
 
         // Criar notificação para o usuário1 que sua solicitação foi recusada
         var notificacao = new Notificacao

@@ -53,6 +53,12 @@ namespace dbRede.Controllers
         [HttpGet("feed/{usuarioId}")]
         public async Task<IActionResult> GetFeed(Guid usuarioId)
         {
+            // paginação 
+            int page =1; int pagesize = 5;
+
+            page = page < 1 ? 1 : page;
+            pagesize = pagesize < 1 ? 5 : pagesize;
+            int ofset = (page - 1) * pagesize;
             // 1. Buscar os usuários que o usuário autenticado está seguindo com status "aceito"
             var seguindoResponse = await _supabase
                 .From<Seguidor>()
@@ -73,6 +79,9 @@ namespace dbRede.Controllers
                 .From<Post>()
                 .Select("*, users (nome)")
                 .Order("data_postagem", Ordering.Descending) // <- aqui está a correção
+            //   colocando a paginação na busca 
+                 .Filter("autor_id", Operator.In, idsSeguidos)
+                .Range(ofset, ofset + pagesize - 1)
                 .Get();
 
             if (resultado == null)
@@ -351,7 +360,36 @@ namespace dbRede.Controllers
             return Ok(videosComAutores);
         }
 
+        //  listar tags
+        [HttpGet("tags")]
+        public async Task<IActionResult> listar_tags([FromQuery] string busca = null)
+        {
+            // executa a query e faz a busca das tags 
+            var resultado = await _supabase
+                .From<Post>()
+                .Select("tags")
+                .Get();
+            if (resultado == null)   
+                return StatusCode(500, new { erro = "não conseguimos listar as tags" });
+            var todasastags = resultado.Models
+                .Where(p => p.Tags != null)
+                .SelectMany(p => p.Tags);
 
+
+
+            // fz a buscsa casesensitive
+            if (!string.IsNullOrEmpty(busca))
+            todasastags = todasastags.Where(tag => tag.Contains(busca));
+
+
+            // faz a lista das tags formatada para json
+            var lista = todasastags
+                .Distinct()
+                .OrderBy(tag => tag)
+                .ToList();
+            return Ok(lista);
+            
+        }
         // começos de DTOS
         public class CriarPostRequest
         {
