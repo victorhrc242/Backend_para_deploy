@@ -38,7 +38,7 @@ namespace dbRede.Controllers
                 Id = post.Id,
                 Conteudo = post.Conteudo,
                 Imagem = post.Imagem,
-                Video=post.Video,
+                Video = post.Video,
                 Tags = post.Tags,
                 DataPostagem = post.DataPostagem,
                 Curtidas = post.Curtidas,
@@ -48,13 +48,49 @@ namespace dbRede.Controllers
             });
 
             return Ok(postsComAutores);
+
         }
+
+
+        [HttpGet("feed-porID/{id}")]
+        public async Task<IActionResult> GetPostPorId(Guid id)
+        {
+            var resultado = await _supabase
+                .From<Post>()
+                .Select("*, users (nome)")
+                .Filter("id", Operator.Equals, id.ToString()) // 👈 Aqui está a correção
+                .Get();
+
+            if (resultado == null || resultado.Models.Count == 0)
+                return NotFound(new { erro = "Post não encontrado." });
+
+            var post = resultado.Models.First();
+
+            var postDTO = new PostDTO
+            {
+                Id = post.Id,
+                Conteudo = post.Conteudo,
+                Imagem = post.Imagem,
+                Video = post.Video,
+                Tags = post.Tags,
+                DataPostagem = post.DataPostagem,
+                Curtidas = post.Curtidas,
+                Comentarios = post.Comentarios,
+                AutorId = post.AutorId,
+                NomeAutor = post.Usuarios?.Nome ?? "Desconhecido"
+            };
+
+            return Ok(postDTO);
+        }
+
+
+
         // lista o post de quem o usuario esta seguindo
         [HttpGet("feed/{usuarioId}")]
         public async Task<IActionResult> GetFeed(Guid usuarioId)
         {
             // paginação 
-            int page =1; int pagesize = 5;
+            int page = 1; int pagesize = 5;
 
             page = page < 1 ? 1 : page;
             pagesize = pagesize < 1 ? 5 : pagesize;
@@ -311,13 +347,13 @@ namespace dbRede.Controllers
 
         // delete posts
         [HttpDelete("{id}")]
-        public async Task<IActionResult>deletar(Guid id)
+        public async Task<IActionResult> deletar(Guid id)
         {
             var resultado = await _supabase
                 .From<Post>()
                 .Where(n => n.Id == id)
                 .Single();
-            if(resultado == null)
+            if (resultado == null)
                 return NotFound(new { erro = "Post não encontrado" });
             await _supabase.From<Post>().Delete(resultado);
 
@@ -326,7 +362,7 @@ namespace dbRede.Controllers
                 mensagem = "Post apagado com sucesso",
                 idRemovido = id
             });
-            
+
         }
 
         [HttpGet("videos")]
@@ -369,7 +405,7 @@ namespace dbRede.Controllers
                 .From<Post>()
                 .Select("tags")
                 .Get();
-            if (resultado == null)   
+            if (resultado == null)
                 return StatusCode(500, new { erro = "não conseguimos listar as tags" });
             var todasastags = resultado.Models
                 .Where(p => p.Tags != null)
@@ -379,7 +415,7 @@ namespace dbRede.Controllers
 
             // fz a buscsa casesensitive
             if (!string.IsNullOrEmpty(busca))
-            todasastags = todasastags.Where(tag => tag.Contains(busca));
+                todasastags = todasastags.Where(tag => tag.Contains(busca));
 
 
             // faz a lista das tags formatada para json
@@ -388,7 +424,7 @@ namespace dbRede.Controllers
                 .OrderBy(tag => tag)
                 .ToList();
             return Ok(lista);
-            
+
         }
         // começos de DTOS
         public class CriarPostRequest
