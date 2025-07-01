@@ -176,18 +176,22 @@ public class MensagensController : ControllerBase
             }
         });
     }
-
     [HttpGet("nao-lidas/{usuarioId}")]
     public async Task<IActionResult> BuscarMensagensNaoLidas(Guid usuarioId)
     {
         try
         {
             var mensagensNaoLidas = await _supabase
-                .From<Mensagens>()
-                .Where(m => m.id_destinatario == usuarioId && !m.lida && !m.apagada)
-                .Get();
+     .From<Mensagens>()
+     .Filter("id_destinatario", Operator.Equals, usuarioId.ToString())
+     .Filter("lida", Operator.Equals, "false")
+     .Filter("apagada", Operator.Equals, "false")
+     .Get();
+            if (mensagensNaoLidas?.Models == null)
+            {
+                return StatusCode(500, new { sucesso = false, erro = "Erro ao buscar mensagens: resposta nula." });
+            }
 
-            // Agrupar por remetente para saber quantas não lidas tem de cada
             var contagem = mensagensNaoLidas.Models
                 .GroupBy(m => m.id_remetente)
                 .ToDictionary(g => g.Key, g => g.Count());
@@ -195,7 +199,7 @@ public class MensagensController : ControllerBase
             return Ok(new
             {
                 sucesso = true,
-                naoLidas = contagem // exemplo: { "user1-id": 3, "user2-id": 1 }
+                naoLidas = contagem
             });
         }
         catch (Exception ex)
