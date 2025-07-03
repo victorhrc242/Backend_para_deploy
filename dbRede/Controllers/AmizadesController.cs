@@ -43,7 +43,7 @@ public class AmizadesController : ControllerBase
             Id = Guid.NewGuid(),
             UsuarioId = dto.Usuario2,  // Usuário que precisa ver a solicitação
             Tipo = "pendente",
-            ReferenciaId = seguidor.Id,
+            UsuarioidRemetente = dto.Usuario1,
             Mensagem = $"{nomeUsuario1} Esta pedindo para te seguir",
             DataEnvio = DateTime.UtcNow
         };
@@ -86,7 +86,7 @@ public class AmizadesController : ControllerBase
             Id = Guid.NewGuid(),
             UsuarioId = dto.Usuario2,  // Usuário que foi seguido e precisa ver a ação
             Tipo = "aceito",
-            ReferenciaId = seguidor.Id,
+            UsuarioidRemetente=dto.Usuario1,
             Mensagem = $"{nomeUsuario1} Segui Voce",
             DataEnvio = DateTime.UtcNow
         };
@@ -130,7 +130,7 @@ public class AmizadesController : ControllerBase
             Id = Guid.NewGuid(),
             UsuarioId = resultado.Usuario1,  // Usuário que enviou a solicitação
             Tipo = "aceito",
-            ReferenciaId = resultado.Id,
+            UsuarioidRemetente=resultado.Usuario1,
             Mensagem = $"{nomeUsuario2} aceitou sua solicitação para seguila", // Usando nome do usuario2
             DataEnvio = DateTime.UtcNow
         };
@@ -169,7 +169,7 @@ public class AmizadesController : ControllerBase
             Id = Guid.NewGuid(),
             UsuarioId = resultado.Usuario1,  // Usuário que enviou a solicitação
             Tipo = "recusado",
-            ReferenciaId = resultado.Id,
+            UsuarioidRemetente=resultado.Usuario1,
             Mensagem = $"{nomeUsuario2} Recusou sua solicitação para seguila",// Usando nome do usuario2
             DataEnvio = DateTime.UtcNow
         };

@@ -33,6 +33,7 @@ namespace dbRede.Controllers
                 {
                     Id = n.Id,
                     UsuarioId = n.UsuarioId,
+                    UsuarioRemetenteId = n.UsuarioidRemetente, // <--- Remetente
                     Tipo = n.Tipo,
                     Mensagem = n.Mensagem,
                     DataEnvio = n.DataEnvio
@@ -100,6 +101,7 @@ namespace dbRede.Controllers
         {
             public Guid Id { get; set; }
             public Guid UsuarioId { get; set; }
+            public Guid? UsuarioRemetenteId { get; set; } // <--- Remetente
             public string Tipo { get; set; }
             public string Mensagem { get; set; }
             public DateTime DataEnvio { get; set; }

@@ -19,7 +19,8 @@ namespace dbRede.Models
 
         [Column("referencia_id")]
         public Guid ReferenciaId { get; set; }
-
+        [Column("usuario_remetente_id")]
+        public Guid? UsuarioidRemetente { get; set; }
         [Column("mensagem")]
         public string Mensagem { get; set; }
 
