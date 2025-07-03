@@ -3,6 +3,8 @@ using dbRede.SignalR;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.SignalR;
 using Supabase;
+using System.Security.Cryptography;
+using System.Text;
 using static Supabase.Postgrest.Constants;
 
 [ApiController]
@@ -27,7 +29,7 @@ public class MensagensController : ControllerBase
             Id = Guid.NewGuid(),
             id_remetente = request.IdRemetente,
             id_destinatario = request.IdDestinatario,
-            conteudo = request.Conteudo,
+            conteudo = Criptografar(request.Conteudo),
             data_envio = DateTime.UtcNow,
             lida = false,
             apagada = false
@@ -92,7 +94,7 @@ public class MensagensController : ControllerBase
                     m.Id,
                     m.id_remetente,
                     m.id_destinatario,
-                    m.conteudo,
+                    conteudo=Descriptografar(m.conteudo), // Descriptografa o conteúdo da mensagem
                     m.data_envio,
                     m.lida,
                     m.apagada
@@ -288,4 +290,40 @@ public class MensagensController : ControllerBase
         public Guid IdDestinatario { get; set; }
         public string Conteudo { get; set; }
     }
+
+
+
+
+    private static string Criptografar(string texto)
+    {
+        using var aes = Aes.Create();
+        aes.Key = Encoding.UTF8.GetBytes("1234567890abcdef1234567890abcdef"); // 32 bytes
+        aes.IV = Encoding.UTF8.GetBytes("1234567890abcdef"); // 16 bytes
+
+        aes.Mode = CipherMode.CBC;
+        aes.Padding = PaddingMode.PKCS7;
+
+        var encryptor = aes.CreateEncryptor();
+        var inputBytes = Encoding.UTF8.GetBytes(texto);
+        var encrypted = encryptor.TransformFinalBlock(inputBytes, 0, inputBytes.Length);
+
+        return Convert.ToBase64String(encrypted);
+    }
+
+    private static string Descriptografar(string base64Criptografado)
+    {
+        using var aes = Aes.Create();
+        aes.Key = Encoding.UTF8.GetBytes("1234567890abcdef1234567890abcdef"); // 32 bytes
+        aes.IV = Encoding.UTF8.GetBytes("1234567890abcdef"); // 16 bytes
+
+        aes.Mode = CipherMode.CBC;
+        aes.Padding = PaddingMode.PKCS7;
+
+        var decryptor = aes.CreateDecryptor();
+        var encryptedBytes = Convert.FromBase64String(base64Criptografado);
+        var decrypted = decryptor.TransformFinalBlock(encryptedBytes, 0, encryptedBytes.Length);
+
+        return Encoding.UTF8.GetString(decrypted);
+    }
+
 }
