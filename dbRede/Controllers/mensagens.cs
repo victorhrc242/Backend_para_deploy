@@ -294,12 +294,13 @@ public class MensagensController : ControllerBase
 
 
 
+    //  cripitografia usando byte  elas estão privada pois so sera usada nessa classe
+
     private static string Criptografar(string texto)
     {
         using var aes = Aes.Create();
-        aes.Key = Encoding.UTF8.GetBytes("1234567890abcdef1234567890abcdef"); // 32 bytes
-        aes.IV = Encoding.UTF8.GetBytes("1234567890abcdef"); // 16 bytes
-
+        aes.Key = Encoding.UTF8.GetBytes("1234567890abcdef1234567890abcdef");
+        aes.IV = Encoding.UTF8.GetBytes("1234567890abcdef");
         aes.Mode = CipherMode.CBC;
         aes.Padding = PaddingMode.PKCS7;
 
@@ -307,15 +308,21 @@ public class MensagensController : ControllerBase
         var inputBytes = Encoding.UTF8.GetBytes(texto);
         var encrypted = encryptor.TransformFinalBlock(inputBytes, 0, inputBytes.Length);
 
-        return Convert.ToBase64String(encrypted);
+        var base64 = Convert.ToBase64String(encrypted);
+        return "[enc]" + base64;
     }
+
 
     private static string Descriptografar(string base64Criptografado)
     {
-        using var aes = Aes.Create();
-        aes.Key = Encoding.UTF8.GetBytes("1234567890abcdef1234567890abcdef"); // 32 bytes
-        aes.IV = Encoding.UTF8.GetBytes("1234567890abcdef"); // 16 bytes
+        if (!base64Criptografado.StartsWith("[enc]"))
+            return base64Criptografado; // já está em texto plano, não precisa descriptografar
 
+        base64Criptografado = base64Criptografado.Substring(5); // remove o prefixo "[enc]"
+
+        using var aes = Aes.Create();
+        aes.Key = Encoding.UTF8.GetBytes("1234567890abcdef1234567890abcdef");
+        aes.IV = Encoding.UTF8.GetBytes("1234567890abcdef");
         aes.Mode = CipherMode.CBC;
         aes.Padding = PaddingMode.PKCS7;
 
@@ -325,5 +332,6 @@ public class MensagensController : ControllerBase
 
         return Encoding.UTF8.GetString(decrypted);
     }
+
 
 }
