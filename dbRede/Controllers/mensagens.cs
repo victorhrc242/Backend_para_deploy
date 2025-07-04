@@ -46,7 +46,7 @@ public class MensagensController : ControllerBase
             mensagem.Id,
             mensagem.id_remetente,
             mensagem.id_destinatario,
-            mensagem.conteudo,
+            conteudo=Descriptografar(mensagem.conteudo),
             mensagem.data_envio,
             mensagem.lida
         });
