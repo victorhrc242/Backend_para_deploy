@@ -15,6 +15,7 @@ using static Supabase.Postgrest.Constants;
 [Route("api/auth")]
 public class RegisterController : ControllerBase
 {
+    //  chama o cliente do supabase
     private readonly Client _supabase;
 
     public RegisterController(IConfiguration configuration)
@@ -25,6 +26,8 @@ public class RegisterController : ControllerBase
     //aqui estava dando erro pois  o status body não estava fucionando pois não
     //estava conseguindo retornar  um json valido ele tentava retornar os dados de
     // um jeito diferente do que era para retornar pois precisava retornar um formato json completo 
+
+    //   registrar usuarios
     [HttpPost("register")]
     public async Task<IActionResult> Register([FromBody] RegisterRequest request)
     {
@@ -91,6 +94,8 @@ public class RegisterController : ControllerBase
             return StatusCode(500, new { error = "Erro interno no servidor.", details = ex.Message });
         }
     }
+
+    // edita algumas infomraçãoes do usuario
     [HttpPut("editarusuarios/{id}")]
     public async Task<IActionResult> EditarUsuario(Guid id, [FromBody] putuser dados)
     {
@@ -126,7 +131,7 @@ public class RegisterController : ControllerBase
             return StatusCode(500, $"Erro ao editar usuário: {ex.Message}");
         }
     }
-
+    //  da um select completo en todos os usuarios
     [HttpGet("usuario")]
     public async Task<IActionResult> ListarUsuarios()
     {
@@ -147,6 +152,7 @@ public class RegisterController : ControllerBase
 
         return Ok(usuarios);
     }
+    // buscar infomraçãoes do usuario por id
     [HttpGet("usuario/{id}")]
     public async Task<IActionResult> ObterUsuarioPorId(Guid id)
     {
@@ -167,16 +173,13 @@ public class RegisterController : ControllerBase
             Nome = usuario.Nome,
             biografia = usuario.biografia,
             Email = usuario.Email,
-           imagem=usuario.FotoPerfil
-            
+            imagem=usuario.FotoPerfil,
+            dataaniversario=usuario.dataaniversario,
+            publico = usuario.publica
         };
-
         return Ok(usuarioDto);
     }
-
-
-
-
+    // buscar usuarios por nome
     [HttpGet("buscar-por-nome/{nome}")]
     public async Task<IActionResult> ObterUsuariosPorNome(string nome)
     {
@@ -204,8 +207,47 @@ public class RegisterController : ControllerBase
         return Ok(dto);
     }
 
+    [HttpPut("alterar-status/{id}")]
+    public async Task<IActionResult> AlterarStatusConta(Guid id)
+    {
+        try
+        {
+            // Buscar o usuário pelo ID
+            var usuario = await _supabase.From<User>().Where(u => u.id == id).Single();
 
+            if (usuario == null)
+            {
+                return NotFound(new { erro = "Usuário não encontrado" });
+            }
 
+            // Alternar o status de 'publica' (de verdadeiro para falso, ou vice-versa)
+            usuario.publica = !usuario.publica;
+
+            // Atualizar o usuário com o novo status
+            var resultado = await _supabase
+                .From<User>()
+                .Where(u => u.id == id)
+                .Set(u => u.publica, usuario.publica)
+                .Update();
+
+            // Se a atualização for bem-sucedida, retornar a nova configuração
+            return Ok(new
+            {
+                message = "Status da conta alterado com sucesso!",
+                usuario = new
+                {
+                    usuario.id,
+                    usuario.Nome_usuario,
+                    usuario.publica
+                }
+            });
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { erro = "Erro interno no servidor", details = ex.Message });
+        }
+    }
+    //   dtos
 
     public class UserDto
     {
@@ -215,13 +257,14 @@ public class RegisterController : ControllerBase
         public string imagem { get; set; }
         public string biografia { get; set; }
         public string Nome_usuario { get; set; }
-
+        public string dataaniversario { get; set; }
+        public bool publico { get; set; }
     }
     public class putuser
     {
-        public string Nome { get; set; }
-        public string imagem { get; set; }
-        public string biografia { get; set; }
+        public string? Nome { get; set; }
+        public string? imagem { get; set; }
+        public string? biografia { get; set; }
     }
 
     // Classe para receber os dados do cadastro

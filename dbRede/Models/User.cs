@@ -28,4 +28,6 @@ public class User : BaseModel
     public string biografia { get; set; }
     [Column("dataaniversario")]
     public string dataaniversario { get; set; }
+    [Column("publica")]
+    public bool publica { get; set; }
 }
