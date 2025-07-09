@@ -63,7 +63,7 @@ public class RegisterController : ControllerBase
 
             var newUser = new User
             {
-                Nome=nomeNormalizado,
+                Nome = nomeNormalizado,
                 Nome_usuario = nomeusuarioNomralizado,
                 Email = emailNormalizado,
                 Senha = senhaHash,
@@ -131,6 +131,9 @@ public class RegisterController : ControllerBase
             return StatusCode(500, $"Erro ao editar usuário: {ex.Message}");
         }
     }
+
+
+
     //  da um select completo en todos os usuarios
     [HttpGet("usuario")]
     public async Task<IActionResult> ListarUsuarios()
@@ -143,15 +146,14 @@ public class RegisterController : ControllerBase
         {
             Id = u.id,
             Nome_usuario = u.Nome_usuario,
-            Nome = u.Nome,
-            Email = u.Email,
-            biografia=u.biografia,
-            imagem=u.FotoPerfil
-            
+            publico = u.publica
         });
 
         return Ok(usuarios);
     }
+
+
+
     // buscar infomraçãoes do usuario por id
     [HttpGet("usuario/{id}")]
     public async Task<IActionResult> ObterUsuarioPorId(Guid id)
@@ -173,12 +175,14 @@ public class RegisterController : ControllerBase
             Nome = usuario.Nome,
             biografia = usuario.biografia,
             Email = usuario.Email,
-            imagem=usuario.FotoPerfil,
-            dataaniversario=usuario.dataaniversario,
+            imagem = usuario.FotoPerfil,
+            dataaniversario = usuario.dataaniversario,
             publico = usuario.publica
         };
         return Ok(usuarioDto);
     }
+
+
     // buscar usuarios por nome
     [HttpGet("buscar-por-nome/{nome}")]
     public async Task<IActionResult> ObterUsuariosPorNome(string nome)
@@ -201,7 +205,8 @@ public class RegisterController : ControllerBase
         {
             Id = u.id,
             Nome_usuario = u.Nome_usuario,
-            imagem = u.FotoPerfil
+            imagem = u.FotoPerfil,
+            publico =u.publica
         }).ToList();
 
         return Ok(dto);
@@ -247,8 +252,35 @@ public class RegisterController : ControllerBase
             return StatusCode(500, new { erro = "Erro interno no servidor", details = ex.Message });
         }
     }
-    //   dtos
+    // comentado para caso se necessario usar 
+    //// Verificar se a conta do usuário é privada  
+    //[HttpGet("verificar-status/{id}")]
+    //public async Task<IActionResult> VerificarStatusConta(Guid id)
+    //{
+    //    try
+    //    {
+    //        // Buscar o usuário pelo ID
+    //        var usuario = await _supabase.From<User>().Where(u => u.id == id).Single();
 
+    //        if (usuario == null)
+    //        {
+    //            return NotFound(new { erro = "Usuário não encontrado" });
+    //        }
+
+    //        // Retorna o status da conta (se é pública ou privada)
+    //        return Ok(new
+    //        {
+    //            message = "Status da conta recuperado com sucesso!",
+    //            status = usuario.publica ? "Pública" : "Privada",
+    //            usuarioId = usuario.id
+    //        });
+    //    }
+    //    catch (Exception ex)
+    //    {
+    //        return StatusCode(500, new { erro = "Erro interno no servidor", details = ex.Message });
+    //    }
+    //}
+    //   dtos
     public class UserDto
     {
         public Guid Id { get; set; }
