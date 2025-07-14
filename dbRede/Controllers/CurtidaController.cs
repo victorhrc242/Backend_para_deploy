@@ -57,7 +57,19 @@ namespace dbRede.Controllers
 
             // 4. Notificar todos os clientes conectados via SignalR
             await _hubContext.Clients.All.SendAsync("ReceberCurtida", request.PostId, request.UsuarioId, true);
+            // Criar notificação para o usuário que criou o post
+            var notificacao = new Notificacao
+            {
+                Id = Guid.NewGuid(),
+                UsuarioId = post.AutorId,  // Notificar o autor do post
+                Tipo = "Curtida",
+                UsuarioidRemetente = curtida.UsuarioId,  // Usuário que fez o comentário
+                Mensagem = $"Curtiu seu post", // Mensagem personalizada
+                DataEnvio = DateTime.UtcNow
+            };
 
+            // Salvar a notificação
+            await _supabase.From<Notificacao>().Insert(notificacao);
             // 5. Retornar resposta
             return Ok(new
             {

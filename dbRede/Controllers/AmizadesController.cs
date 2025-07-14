@@ -44,7 +44,8 @@ public class AmizadesController : ControllerBase
             UsuarioId = dto.Usuario2,  // Usuário que precisa ver a solicitação
             Tipo = "pendente",
             UsuarioidRemetente = dto.Usuario1,
-            Mensagem = $"{nomeUsuario1} Esta pedindo para te seguir",
+            //Mensagem = $"{nomeUsuario1} Esta pedindo para te seguir",
+            Mensagem = $"Esta pedindo para te seguir",
             DataEnvio = DateTime.UtcNow
         };
 
@@ -87,7 +88,8 @@ public class AmizadesController : ControllerBase
             UsuarioId = dto.Usuario2,  // Usuário que foi seguido e precisa ver a ação
             Tipo = "aceito",
             UsuarioidRemetente=dto.Usuario1,
-            Mensagem = $"{nomeUsuario1} Segui Voce",
+            //Mensagem = $"{nomeUsuario1} Seguiu Voce",
+            Mensagem = $"Seguiu Voce",
             DataEnvio = DateTime.UtcNow
         };
 
@@ -131,7 +133,8 @@ public class AmizadesController : ControllerBase
             UsuarioId = resultado.Usuario1,  // Usuário que enviou a solicitação
             Tipo = "aceito",
             UsuarioidRemetente=resultado.Usuario1,
-            Mensagem = $"{nomeUsuario2} aceitou sua solicitação para seguila", // Usando nome do usuario2
+           // Mensagem = $"{nomeUsuario2} aceitou sua solicitação para seguila", // Usando nome do usuario2
+            Mensagem = $"aceitou sua solicitação para seguila", // Usando nome do usuario2
             DataEnvio = DateTime.UtcNow
         };
 
@@ -170,7 +173,7 @@ public class AmizadesController : ControllerBase
             UsuarioId = resultado.Usuario1,  // Usuário que enviou a solicitação
             Tipo = "recusado",
             UsuarioidRemetente=resultado.Usuario1,
-            Mensagem = $"{nomeUsuario2} Recusou sua solicitação para seguila",// Usando nome do usuario2
+            //Mensagem = $"{nomeUsuario2} Recusou sua solicitação para seguila",// Usando nome do usuario2
             DataEnvio = DateTime.UtcNow
         };
 

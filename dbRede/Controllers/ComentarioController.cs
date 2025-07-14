@@ -54,6 +54,18 @@ public class ComentarioController : ControllerBase
             await _supabase.From<Post>().Update(post);
         }
         await _HubContext.Clients.All.SendAsync("Novo comentario", post);
+        // Criar notificação para o usuário que criou o post
+        var notificacao = new Notificacao
+        {
+            Id = Guid.NewGuid(),
+            UsuarioId = post.AutorId,  // Notificar o autor do post
+            Tipo = "Comentario",
+            UsuarioidRemetente = comentario.AutorId,  // Usuário que fez o comentário
+            Mensagem = $"comentou no seu post", // Mensagem personalizada
+            DataEnvio = DateTime.UtcNow
+        };
+        // Salvar a notificação
+        await _supabase.From<Notificacao>().Insert(notificacao);
         return Ok(new
         {
             sucesso = true,
