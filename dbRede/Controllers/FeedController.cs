@@ -11,6 +11,7 @@ using System.Text.Json;
 using Microsoft.Extensions.Caching.Memory;
 using System.Linq;
 using Supabase;
+using System.Text;
 namespace dbRede.Controllers
 {
     [ApiController]
@@ -247,9 +248,9 @@ namespace dbRede.Controllers
                 .GroupBy(v => v.post_id)
                 .ToDictionary(g => g.Key, g => g.Count());
 
-            var entradasIA = posts.Select(p => new
+            // Preparar entrada para a API Python
+            var entradasIA = posts.Select(p => new PostEntrada
             {
-                id = p.Id,
                 curtidas_em_comum = curtidas.Count(c => c.PostId == p.Id),
                 tags_em_comum = p.Tags?.Count(tag => tagsCurtidas.Contains(tag)) ?? 0,
                 eh_seguidor = idsSeguidos.Contains(p.AutorId) ? 1 : 0,
@@ -259,64 +260,36 @@ namespace dbRede.Controllers
                 total_visualizacoes_post = p.visualizacao ?? 0
             }).ToList();
 
-            // 3. Serializar JSON para enviar via stdin
-            string jsonInput = JsonSerializer.Serialize(entradasIA);
+            List<ScoreResponse> resultadoIA;
 
-            var psi = new ProcessStartInfo
+            using (var client = new HttpClient())
             {
-                FileName = "python",
-                Arguments = "prever_feed.py",
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                RedirectStandardInput = true,
-                UseShellExecute = false,
-                CreateNoWindow = true,
-                // WorkingDirectory = "/app"  // Opcional, pois por padrão o processo já inicia aí
-            };
+                var jsonInput = JsonSerializer.Serialize(entradasIA);
+                var content = new StringContent(jsonInput, Encoding.UTF8, "application/json");
 
+                var response = await client.PostAsync("http://localhost:8000/score", content);
+                if (!response.IsSuccessStatusCode)
+                {
+                    var erroDetalhes = await response.Content.ReadAsStringAsync();
+                    return StatusCode(500, new { erro = "Erro ao chamar API Python", detalhes = erroDetalhes });
+                }
 
-            using var process = Process.Start(psi);
-            if (process == null)
-            {
-                return StatusCode(500, new { erro = "Falha ao iniciar o processo Python." });
+                var jsonOutput = await response.Content.ReadAsStringAsync();
+                resultadoIA = JsonSerializer.Deserialize<List<ScoreResponse>>(jsonOutput);
             }
 
-            try
-            {
-                await process.StandardInput.WriteAsync(jsonInput);
-                await process.StandardInput.FlushAsync();
-                process.StandardInput.Close();
-            }
-            catch (IOException ex)
-            {
-                Console.WriteLine("Pipe fechado prematuramente: " + ex.Message);
-            }
-
-            string output = await process.StandardOutput.ReadToEndAsync();
-            string error = await process.StandardError.ReadToEndAsync();
-
-            process.WaitForExit();
-
-            Console.WriteLine($"🕒 Script Python executado em: {stopwatchs.ElapsedMilliseconds} ms");
-
-            if (process.ExitCode != 0)
-            {
-                return StatusCode(500, new { erro = "Erro ao executar o script Python", detalhes = error });
-            }
-
-            var resultadoIA = JsonSerializer.Deserialize<List<IAResposta>>(output);
             var mapaScores = resultadoIA?.ToDictionary(x => x.postId, x => x.score) ?? new();
 
-            // 4. Ordenar posts: priorizar não vistos, depois por score
+            // Ordenar posts: priorizar não vistos, depois por score
             var feedFiltrado = posts
-                .Where(p => mapaScores.ContainsKey(p.Id))
+                .Where((p, idx) => mapaScores.ContainsKey(idx))
                 .OrderBy(p => mapaVisualizacaoUsuario.ContainsKey(p.Id) ? 1 : 0)  // não vistos primeiro
-                .ThenByDescending(p => mapaScores[p.Id])
+                .ThenByDescending(p => mapaScores[posts.IndexOf(p)])
                 .Skip((page - 1) * pageSize)
                 .Take(pageSize)
                 .ToList();
 
-            // 5. Buscar autores dos posts filtrados
+            // Buscar autores dos posts filtrados
             var autorIds = feedFiltrado.Select(p => p.AutorId).Distinct().ToList();
 
             var autoresResp = await _supabase
@@ -326,7 +299,7 @@ namespace dbRede.Controllers
 
             var mapaAutores = autoresResp.Models.ToDictionary(u => u.id, u => u.Nome);
 
-            // 6. Montar resposta final
+            // Montar resposta final
             var resultado = feedFiltrado.Select(post => new PostDTO
             {
                 Id = post.Id,
@@ -345,7 +318,7 @@ namespace dbRede.Controllers
             stopwatchs.Stop();
             Console.WriteLine($"🕒 Endpoint total executado em: {stopwatchs.ElapsedMilliseconds} ms");
 
-            // 7. Cache do resultado final por 10 segundos
+            // Cache do resultado final por 10 segundos
             _cache.Set(cacheKey, resultado, new MemoryCacheEntryOptions()
                 .SetAbsoluteExpiration(TimeSpan.FromSeconds(10)));
 
@@ -623,6 +596,22 @@ namespace dbRede.Controllers
         {
             public Guid postId { get; set; }
             public double score { get; set; }
+        }
+        public class PostEntrada
+        {
+            public int curtidas_em_comum { get; set; }
+            public int tags_em_comum { get; set; }
+            public int eh_seguidor { get; set; }
+            public int recente { get; set; }
+            public int ja_visualizou { get; set; }
+            public int tempo_visualizacao_usuario { get; set; }
+            public int total_visualizacoes_post { get; set; }
+        }
+
+        public class ScoreResponse
+        {
+            public int postId { get; set; }
+            public float score { get; set; }
         }
 
     }

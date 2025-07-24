@@ -1,37 +1,24 @@
-import sys
-import json
+from fastapi import FastAPI
+from pydantic import BaseModel
 import numpy as np
 from joblib import load
 
-# Carrega o modelo previamente treinado
+app = FastAPI()
 modelo = load('modelo_feed.joblib')
 
-# Ler todo o JSON do stdin
-entrada_json = sys.stdin.read()
+class PostEntrada(BaseModel):
+    curtidas_em_comum: int
+    tags_em_comum: int
+    eh_seguidor: int
+    recente: int
+    ja_visualizou: int
+    tempo_visualizacao_usuario: int
+    total_visualizacoes_post: int
 
-# Converte o conteúdo lido (string JSON) em lista de objetos Python
-posts = json.loads(entrada_json)
-
-# Lista para armazenar os resultados com pontuação
-resposta = []
-
-# Calcula a probabilidade (score) para cada post
-for post in posts:
-    entrada = np.array([
-        post["curtidas_em_comum"],
-        post["tags_em_comum"],
-        post["eh_seguidor"],
-        post["recente"],
-        post["ja_visualizou"],
-        post["tempo_visualizacao_usuario"],
-        post["total_visualizacoes_post"]
-    ]).reshape(1, -1)
-
-    score = float(modelo.predict_proba(entrada)[0][1])
-    resposta.append({
-        "postId": post["id"],
-        "score": score
-    })
-
-# Imprime o resultado no formato JSON
-print(json.dumps(resposta))
+@app.post("/score")
+def calcular_score(posts: list[PostEntrada]):
+    entradas = np.array([[p.curtidas_em_comum, p.tags_em_comum, p.eh_seguidor,
+                          p.recente, p.ja_visualizou, p.tempo_visualizacao_usuario,
+                          p.total_visualizacoes_post] for p in posts])
+    scores = modelo.predict_proba(entradas)[:, 1]
+    return [{"postId": i, "score": float(score)} for i, score in enumerate(scores)]
