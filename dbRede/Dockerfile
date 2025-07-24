@@ -6,7 +6,8 @@ EXPOSE 80
 # Instala o Python e dependências
 RUN apt-get update && \
     apt-get install -y python3 python3-pip && \
-    pip3 install --no-cache-dir numpy scikit-learn joblib
+    pip3 install --break-system-packages --no-cache-dir numpy scikit-learn joblib
+
 
 # Cria alias: python → python3
 RUN ln -s /usr/bin/python3 /usr/bin/python
