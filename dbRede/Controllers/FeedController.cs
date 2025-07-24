@@ -12,6 +12,7 @@ using Microsoft.Extensions.Caching.Memory;
 using System.Linq;
 using Supabase;
 using System.Text;
+using Microsoft.ML;
 namespace dbRede.Controllers
 {
     [ApiController]
@@ -21,12 +22,18 @@ namespace dbRede.Controllers
         private readonly Client _supabase;
         private readonly IHubContext<FeedHub> _HubContext;
         private readonly IMemoryCache _cache;
+        private readonly PredictionEngine<ModeloInput, ModeloOutput> _predictionEngine;
         public FeedController(IConfiguration configuration, IHubContext<FeedHub> hubContext, IMemoryCache cache)
         {
             var service = new SupabaseService(configuration);
             _supabase = service.GetClient();
             _HubContext = hubContext;
             _cache = cache;
+            var mlContext = new MLContext();
+            DataViewSchema modelSchema;
+            var modeloTreinado = mlContext.Model.Load("modelo_feed.zip", out modelSchema);
+
+            _predictionEngine = mlContext.Model.CreatePredictionEngine<ModeloInput, ModeloOutput>(modeloTreinado);
         }
 
         [HttpGet("feed")]
@@ -193,14 +200,13 @@ namespace dbRede.Controllers
             int pageSize = 10;
             string cacheKey = $"feed_{usuarioId}_p{page}_s{pageSize}";
 
-            // 1. Cache do resultado final
             if (_cache.TryGetValue(cacheKey, out List<PostDTO> resultadoCache))
             {
                 Console.WriteLine("⚡ Feed retornado do cache.");
                 return Ok(resultadoCache);
             }
 
-            // 2. Buscar dados em paralelo, com cache para dados estáticos por usuário
+            // 1. Carrega dados do Supabase
             var seguindoTask = _cache.GetOrCreateAsync($"seg_{usuarioId}", async _ =>
                 (await _supabase.From<Seguidor>().Where(s => s.Usuario1 == usuarioId && s.Status == "aceito").Get()).Models);
 
@@ -248,48 +254,49 @@ namespace dbRede.Controllers
                 .GroupBy(v => v.post_id)
                 .ToDictionary(g => g.Key, g => g.Count());
 
-            // Preparar entrada para a API Python
-            var entradasIA = posts.Select(p => new PostEntrada
+            // 2. Carrega modelo ML.NET
+            var stopwatchIA = Stopwatch.StartNew();
+            var mlContext = new MLContext();
+            var modelPath = Path.Combine(Directory.GetCurrentDirectory(), "modelo_feed.zip");
+
+            ITransformer modeloML;
+            DataViewSchema modeloSchema;
+            using (var fileStream = new FileStream(modelPath, FileMode.Open, FileAccess.Read, FileShare.Read))
+                modeloML = mlContext.Model.Load(fileStream, out modeloSchema);
+
+            var predictionEngine = mlContext.Model.CreatePredictionEngine<ModeloInput, ModeloOutput>(modeloML);
+
+            // 3. Prepara entradas para o modelo e calcula os scores
+            var resultadoIA = posts.Select((p, idx) =>
             {
-                curtidas_em_comum = curtidas.Count(c => c.PostId == p.Id),
-                tags_em_comum = p.Tags?.Count(tag => tagsCurtidas.Contains(tag)) ?? 0,
-                eh_seguidor = idsSeguidos.Contains(p.AutorId) ? 1 : 0,
-                recente = (DateTime.UtcNow - p.DataPostagem).TotalDays < 2 ? 1 : 0,
-                ja_visualizou = mapaVisualizacaoUsuario.ContainsKey(p.Id) ? 1 : 0,
-                tempo_visualizacao_usuario = mapaVisualizacaoUsuario.TryGetValue(p.Id, out var t) ? t : 0,
-                total_visualizacoes_post = p.visualizacao ?? 0
+                var entrada = new ModeloInput
+                {
+                    CurtidasEmComum = curtidas.Count(c => c.PostId == p.Id),
+                    TagsEmComum = p.Tags?.Count(tag => tagsCurtidas.Contains(tag)) ?? 0,
+                    EhSeguidor = idsSeguidos.Contains(p.AutorId) ? 1 : 0,
+                    Recente = (DateTime.UtcNow - p.DataPostagem).TotalDays < 2 ? 1 : 0,
+                    JaVisualizou = mapaVisualizacaoUsuario.ContainsKey(p.Id) ? 1 : 0,
+                    TempoVisualizacaoUsuario = mapaVisualizacaoUsuario.TryGetValue(p.Id, out var t) ? t : 0,
+                    TotalVisualizacoesPost = p.visualizacao ?? 0
+                };
+
+                var resultado = predictionEngine.Predict(entrada);
+                return new ScoreResponse { postId = idx, score = resultado.Probability }; // ou resultado.Score
             }).ToList();
 
-            List<ScoreResponse> resultadoIA;
+            var mapaScores = resultadoIA.ToDictionary(x => x.postId, x => x.score);
+            stopwatchIA.Stop(); // ⏱️ Fim da medição
+            Console.WriteLine($"⚙️ IA executada em: {stopwatchIA.ElapsedMilliseconds} ms");
 
-            using (var client = new HttpClient())
-            {
-                var jsonInput = JsonSerializer.Serialize(entradasIA);
-                var content = new StringContent(jsonInput, Encoding.UTF8, "application/json");
-
-                var response = await client.PostAsync("http://localhost:8000/score", content);
-                if (!response.IsSuccessStatusCode)
-                {
-                    var erroDetalhes = await response.Content.ReadAsStringAsync();
-                    return StatusCode(500, new { erro = "Erro ao chamar API Python", detalhes = erroDetalhes });
-                }
-
-                var jsonOutput = await response.Content.ReadAsStringAsync();
-                resultadoIA = JsonSerializer.Deserialize<List<ScoreResponse>>(jsonOutput);
-            }
-
-            var mapaScores = resultadoIA?.ToDictionary(x => x.postId, x => x.score) ?? new();
-
-            // Ordenar posts: priorizar não vistos, depois por score
+            // 4. Ordena e pagina o feed
             var feedFiltrado = posts
                 .Where((p, idx) => mapaScores.ContainsKey(idx))
-                .OrderBy(p => mapaVisualizacaoUsuario.ContainsKey(p.Id) ? 1 : 0)  // não vistos primeiro
+                .OrderBy(p => mapaVisualizacaoUsuario.ContainsKey(p.Id) ? 1 : 0) // não vistos primeiro
                 .ThenByDescending(p => mapaScores[posts.IndexOf(p)])
                 .Skip((page - 1) * pageSize)
                 .Take(pageSize)
                 .ToList();
 
-            // Buscar autores dos posts filtrados
             var autorIds = feedFiltrado.Select(p => p.AutorId).Distinct().ToList();
 
             var autoresResp = await _supabase
@@ -299,7 +306,6 @@ namespace dbRede.Controllers
 
             var mapaAutores = autoresResp.Models.ToDictionary(u => u.id, u => u.Nome);
 
-            // Montar resposta final
             var resultado = feedFiltrado.Select(post => new PostDTO
             {
                 Id = post.Id,
@@ -318,12 +324,12 @@ namespace dbRede.Controllers
             stopwatchs.Stop();
             Console.WriteLine($"🕒 Endpoint total executado em: {stopwatchs.ElapsedMilliseconds} ms");
 
-            // Cache do resultado final por 10 segundos
             _cache.Set(cacheKey, resultado, new MemoryCacheEntryOptions()
                 .SetAbsoluteExpiration(TimeSpan.FromSeconds(10)));
 
             return Ok(resultado);
         }
+
 
 
         [HttpPost("post/{postId}/visualizacao")]
@@ -590,6 +596,22 @@ namespace dbRede.Controllers
             public List<string> Tags { get; set; }
             public string NomeAutor { get; set; }
             public int? visualization { get; set; }
+        }
+        public class ModeloInput
+        {
+            public float CurtidasEmComum { get; set; }
+            public float TagsEmComum { get; set; }
+            public float EhSeguidor { get; set; }
+            public float Recente { get; set; }
+            public float JaVisualizou { get; set; }
+            public float TempoVisualizacaoUsuario { get; set; }
+            public float TotalVisualizacoesPost { get; set; }
+        }
+
+        public class ModeloOutput
+        {
+            public float Probability { get; set; }  // usado se for classificação binária
+            public float Score { get; set; }
         }
 
         public class IAResposta
