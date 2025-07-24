@@ -265,13 +265,15 @@ namespace dbRede.Controllers
             var psi = new ProcessStartInfo
             {
                 FileName = "python",
-                Arguments = "\"C:\\Users\\PC\\Documents\\GitHub\\Backend_para_deploy\\dbRede\\prever_feed.py\"",
+                Arguments = "prever_feed.py",
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
                 RedirectStandardInput = true,
                 UseShellExecute = false,
-                CreateNoWindow = true
+                CreateNoWindow = true,
+                // WorkingDirectory = "/app"  // Opcional, pois por padrão o processo já inicia aí
             };
+
 
             using var process = Process.Start(psi);
             if (process == null)
