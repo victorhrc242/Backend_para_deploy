@@ -16,6 +16,8 @@ builder.Services.AddSwaggerGen(c =>
 builder.Services.AddSingleton<SupabaseService>();
 builder.Services.AddSignalR();
 builder.Services.AddSingleton<IUserIdProvider, CustomUserIdProvider>();
+builder.Services.AddMemoryCache();
+
 // ✅ Configure CORS corretamente
 builder.Services.AddCors(options =>
 {

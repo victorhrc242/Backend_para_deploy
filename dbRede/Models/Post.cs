@@ -22,7 +22,10 @@ namespace dbRede.Models
         [Column("imagem")]
         public string? Imagem { get; set; }
         [Column("video")]
+
         public string? Video { get; set; }
+        [Column("visualizacao")]
+        public int? visualizacao { get; set; }
         [Column("data_postagem")]
         public DateTime DataPostagem { get; set; }
 

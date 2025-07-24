@@ -6,7 +6,11 @@ using static dbRede.Controllers.FeedController;
 using Microsoft.AspNetCore.SignalR;
 using dbRede.Hubs;
 using Microsoft.Extensions.Hosting;
-
+using System.Diagnostics;
+using System.Text.Json;
+using Microsoft.Extensions.Caching.Memory;
+using System.Linq;
+using Supabase;
 namespace dbRede.Controllers
 {
     [ApiController]
@@ -15,11 +19,13 @@ namespace dbRede.Controllers
     {
         private readonly Client _supabase;
         private readonly IHubContext<FeedHub> _HubContext;
-        public FeedController(IConfiguration configuration, IHubContext<FeedHub> hubContext)
+        private readonly IMemoryCache _cache;
+        public FeedController(IConfiguration configuration, IHubContext<FeedHub> hubContext, IMemoryCache cache)
         {
             var service = new SupabaseService(configuration);
             _supabase = service.GetClient();
             _HubContext = hubContext;
+            _cache = cache;
         }
 
         [HttpGet("feed")]
@@ -178,96 +184,148 @@ namespace dbRede.Controllers
                 return StatusCode(500, new { erro = "Erro interno ao buscar os posts do usuário.", detalhes = ex.Message });
             }
         }
-        [HttpGet("feed-completo/{usuarioId}")]
+        [HttpGet("feed-dinamico-algoritimo-home/{usuarioId}")]
         public async Task<IActionResult> GetFeedCompleto(Guid usuarioId)
         {
-            int page = 1; int pageSize = 10;
-            // 1. Buscar usuários seguidos
-            var seguindo = await _supabase
-                .From<Seguidor>()
-                .Where(s => s.Usuario1 == usuarioId && s.Status == "aceito")
-                .Get();
+            var stopwatchs = Stopwatch.StartNew();
+            int page = 1;
+            int pageSize = 10;
+            string cacheKey = $"feed_{usuarioId}_p{page}_s{pageSize}";
 
-            var idsSeguidos = seguindo.Models.Select(s => s.Usuario2).ToList();
-
-            // 2. Buscar curtidas e comentários
-            var curtidas = await _supabase.From<Curtida>().Where(c => c.UsuarioId == usuarioId).Get();
-            var comentarios = await _supabase.From<Comentario>().Where(c => c.AutorId == usuarioId).Get();
-
-            // 3. Buscar posts interagidos
-            var idsInteragidos = curtidas.Models.Select(c => c.PostId)
-                .Concat(comentarios.Models.Select(c => c.PostId))
-                .Distinct().ToList();
-
-            var postsInteragidos = new List<Post>();
-            if (idsInteragidos.Any())
+            // 1. Cache do resultado final
+            if (_cache.TryGetValue(cacheKey, out List<PostDTO> resultadoCache))
             {
-                var resp = await _supabase
-                    .From<Post>()
-                    .Filter("id", Operator.In, idsInteragidos)
-                    .Get();
-
-                postsInteragidos = resp.Models;
+                Console.WriteLine("⚡ Feed retornado do cache.");
+                return Ok(resultadoCache);
             }
 
-            // 4. Extrair tags
-            var tagsCurtidas = postsInteragidos
-                .Where(p => p.Tags != null)
-                .SelectMany(p => p.Tags)
-                .Distinct()
-                .ToList();
+            // 2. Buscar dados em paralelo, com cache para dados estáticos por usuário
+            var seguindoTask = _cache.GetOrCreateAsync($"seg_{usuarioId}", async _ =>
+                (await _supabase.From<Seguidor>().Where(s => s.Usuario1 == usuarioId && s.Status == "aceito").Get()).Models);
 
-            // 5. Autores com mais interações
-            var autoresInteragidos = curtidas.Models
-                .Select(c => c.UsuarioId)
-                .Concat(comentarios.Models.Select(c => c.AutorId))
-                .Where(id => idsSeguidos.Contains(id))
-                .GroupBy(id => id)
-                .OrderByDescending(g => g.Count())
-                .Select(g => g.Key)
-                .ToList();
+            var curtidasTask = _cache.GetOrCreateAsync($"curt_{usuarioId}", async _ =>
+                (await _supabase.From<Curtida>().Where(c => c.UsuarioId == usuarioId).Get()).Models);
 
-            // 6. Buscar todos os posts relevantes
-            var todosPosts = await _supabase.From<Post>().Order("data_postagem", Ordering.Descending).Get();
+            var comentariosTask = _cache.GetOrCreateAsync($"com_{usuarioId}", async _ =>
+                (await _supabase.From<Comentario>().Where(c => c.AutorId == usuarioId).Get()).Models);
 
-            // 7. Agrupamento por tipo:
-            var recentesSeguidos = todosPosts.Models
-                .Where(p => idsSeguidos.Contains(p.AutorId) && p.DataPostagem >= DateTime.UtcNow.AddDays(-2))
-                .OrderByDescending(p => autoresInteragidos.Contains(p.AutorId) ? 1 : 0)
-                .ThenByDescending(p => p.DataPostagem);
+            var postsTask = _supabase
+                .From<Post>()
+                .Order("data_postagem", Ordering.Descending)
+                .Get();
 
-            var recomendadosPorTags = todosPosts.Models
-                .Where(p => !idsSeguidos.Contains(p.AutorId) &&
-                            p.Tags != null &&
-                            p.Tags.Any(tag => tagsCurtidas.Contains(tag)) &&
-                            p.DataPostagem >= DateTime.UtcNow.AddDays(-2))
-                .OrderByDescending(p => p.DataPostagem);
+            var visualizacoesTask = _cache.GetOrCreateAsync($"viz_{usuarioId}", async _ =>
+                (await _supabase.From<VisualizacaoPost>().Where(v => v.usuario_id == usuarioId).Get()).Models);
 
-            var antigosInteragidos = postsInteragidos
-                .Where(p => p.DataPostagem < DateTime.UtcNow.AddDays(-2))
-                .OrderByDescending(p => p.DataPostagem);
+            await Task.WhenAll(seguindoTask, curtidasTask, comentariosTask, postsTask, visualizacoesTask);
 
-            // 8. Junta tudo, remove duplicados e aplica paginação
-            var feedCompleto = recentesSeguidos
-                .Concat(recomendadosPorTags)
-                .Concat(antigosInteragidos)
-                .GroupBy(p => p.Id)
-                .Select(g => g.First())
+            var seguindo = seguindoTask.Result;
+            var curtidas = curtidasTask.Result;
+            var comentarios = comentariosTask.Result;
+            var posts = postsTask.Result.Models;
+            var visualizacoesUsuario = visualizacoesTask.Result;
+
+            var idsSeguidos = seguindo.Select(s => s.Usuario2).ToHashSet();
+            var idsInteragidos = curtidas.Select(c => c.PostId).Concat(comentarios.Select(c => c.PostId)).ToHashSet();
+
+            List<string> tagsCurtidas = new();
+            if (idsInteragidos.Any())
+            {
+                var interagidosResp = await _supabase
+                    .From<Post>()
+                    .Filter("id", Operator.In, idsInteragidos.ToList())
+                    .Get();
+
+                tagsCurtidas = interagidosResp.Models
+                    .Where(p => p.Tags != null)
+                    .SelectMany(p => p.Tags)
+                    .Distinct()
+                    .ToList();
+            }
+
+            var mapaVisualizacaoUsuario = visualizacoesUsuario
+                .GroupBy(v => v.post_id)
+                .ToDictionary(g => g.Key, g => g.Count());
+
+            var entradasIA = posts.Select(p => new
+            {
+                id = p.Id,
+                curtidas_em_comum = curtidas.Count(c => c.PostId == p.Id),
+                tags_em_comum = p.Tags?.Count(tag => tagsCurtidas.Contains(tag)) ?? 0,
+                eh_seguidor = idsSeguidos.Contains(p.AutorId) ? 1 : 0,
+                recente = (DateTime.UtcNow - p.DataPostagem).TotalDays < 2 ? 1 : 0,
+                ja_visualizou = mapaVisualizacaoUsuario.ContainsKey(p.Id) ? 1 : 0,
+                tempo_visualizacao_usuario = mapaVisualizacaoUsuario.TryGetValue(p.Id, out var t) ? t : 0,
+                total_visualizacoes_post = p.visualizacao ?? 0
+            }).ToList();
+
+            // 3. Serializar JSON para enviar via stdin
+            string jsonInput = JsonSerializer.Serialize(entradasIA);
+
+            var psi = new ProcessStartInfo
+            {
+                FileName = "python",
+                Arguments = "\"C:\\Users\\PC\\Documents\\GitHub\\Backend_para_deploy\\dbRede\\prever_feed.py\"",
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                RedirectStandardInput = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+
+            using var process = Process.Start(psi);
+            if (process == null)
+            {
+                return StatusCode(500, new { erro = "Falha ao iniciar o processo Python." });
+            }
+
+            try
+            {
+                await process.StandardInput.WriteAsync(jsonInput);
+                await process.StandardInput.FlushAsync();
+                process.StandardInput.Close();
+            }
+            catch (IOException ex)
+            {
+                Console.WriteLine("Pipe fechado prematuramente: " + ex.Message);
+            }
+
+            string output = await process.StandardOutput.ReadToEndAsync();
+            string error = await process.StandardError.ReadToEndAsync();
+
+            process.WaitForExit();
+
+            Console.WriteLine($"🕒 Script Python executado em: {stopwatchs.ElapsedMilliseconds} ms");
+
+            if (process.ExitCode != 0)
+            {
+                return StatusCode(500, new { erro = "Erro ao executar o script Python", detalhes = error });
+            }
+
+            var resultadoIA = JsonSerializer.Deserialize<List<IAResposta>>(output);
+            var mapaScores = resultadoIA?.ToDictionary(x => x.postId, x => x.score) ?? new();
+
+            // 4. Ordenar posts: priorizar não vistos, depois por score
+            var feedFiltrado = posts
+                .Where(p => mapaScores.ContainsKey(p.Id))
+                .OrderBy(p => mapaVisualizacaoUsuario.ContainsKey(p.Id) ? 1 : 0)  // não vistos primeiro
+                .ThenByDescending(p => mapaScores[p.Id])
                 .Skip((page - 1) * pageSize)
                 .Take(pageSize)
                 .ToList();
 
-            // 9. Carrega nomes dos autores
-            var autorIds = feedCompleto.Select(p => p.AutorId).Distinct().ToList();
-            var autores = await _supabase
+            // 5. Buscar autores dos posts filtrados
+            var autorIds = feedFiltrado.Select(p => p.AutorId).Distinct().ToList();
+
+            var autoresResp = await _supabase
                 .From<User>()
                 .Filter("id", Operator.In, autorIds)
                 .Get();
 
-            var mapaAutores = autores.Models.ToDictionary(u => u.id, u => u.Nome);
+            var mapaAutores = autoresResp.Models.ToDictionary(u => u.id, u => u.Nome);
 
-            // 10. Monta DTOs
-            var resultado = feedCompleto.Select(post => new PostDTO
+            // 6. Montar resposta final
+            var resultado = feedFiltrado.Select(post => new PostDTO
             {
                 Id = post.Id,
                 Conteudo = post.Conteudo,
@@ -278,14 +336,67 @@ namespace dbRede.Controllers
                 Curtidas = post.Curtidas,
                 Comentarios = post.Comentarios,
                 AutorId = post.AutorId,
-                NomeAutor = mapaAutores.TryGetValue(post.AutorId, out var nome) ? nome : "Desconhecido"
-            });
+                NomeAutor = mapaAutores.TryGetValue(post.AutorId, out var nome) ? nome : "Desconhecido",
+                visualization = post.visualizacao,
+            }).ToList();
+
+            stopwatchs.Stop();
+            Console.WriteLine($"🕒 Endpoint total executado em: {stopwatchs.ElapsedMilliseconds} ms");
+
+            // 7. Cache do resultado final por 10 segundos
+            _cache.Set(cacheKey, resultado, new MemoryCacheEntryOptions()
+                .SetAbsoluteExpiration(TimeSpan.FromSeconds(10)));
 
             return Ok(resultado);
         }
 
 
+        [HttpPost("post/{postId}/visualizacao")]
+        public async Task<IActionResult> RegistrarVisualizacao(Guid postId, [FromQuery] Guid usuarioId, [FromQuery] int tempoEmSegundos = 0)
+        {
+            if (tempoEmSegundos < 2)
+            {
+                return BadRequest(new { erro = "Tempo de visualização insuficiente." });
+            }
 
+            var visualizacaoExistente = await _supabase
+                .From<VisualizacaoPost>()
+                .Where(v => v.usuario_id == usuarioId && v.post_id == postId)
+                .Get();
+
+            if (visualizacaoExistente.Models.Any())
+            {
+                return Ok(new { mensagem = "Visualização já registrada." });
+            }
+
+            await _supabase.From<VisualizacaoPost>().Insert(new VisualizacaoPost
+            {
+                usuario_id = usuarioId,
+                post_id = postId,
+                data_visualizacao = DateTime.UtcNow
+            });
+
+            var postResp = await _supabase.From<Post>().Where(p => p.Id == postId).Get();
+            if (!postResp.Models.Any())
+            {
+                return NotFound(new { erro = "Post não encontrado." });
+            }
+
+            var postParaAtualizar = postResp.Models[0];
+            postParaAtualizar.visualizacao = (postParaAtualizar.visualizacao ?? 0) + 1;
+
+            var updateResp = await _supabase
+                .From<Post>()
+                .Where(p => p.Id == postId)
+                .Update(postParaAtualizar);
+
+            if (!updateResp.Models.Any())
+            {
+                return StatusCode(500, new { erro = "Falha ao atualizar visualizações do post." });
+            }
+
+            return Ok(new { mensagem = "Visualização registrada com sucesso." });
+        }
         [HttpPost("criar")]
         public async Task<IActionResult> CriarPost([FromBody] CriarPostRequest novoPost)
         {
@@ -426,7 +537,62 @@ namespace dbRede.Controllers
             return Ok(lista);
 
         }
-        // começos de DTOS
+        //private async Task<List<(Guid postId, double score)>> ObterPontuacoesIA(List<Post> posts, Guid usuarioId)
+        //{
+        //    try
+        //    {
+        //        var entradasIA = posts.Select(p => new
+        //        {
+        //            id = p.Id,
+        //            curtidas_em_comum = p.Curtidas,
+        //            tags_em_comum = p.Tags?.Count ?? 0,
+        //            eh_seguidor = 1,
+        //            recente = (DateTime.UtcNow - p.DataPostagem).TotalDays < 2 ? 1 : 0
+        //        }).ToList();
+
+        //        var jsonPath = Path.GetTempFileName();
+        //        await System.IO.File.WriteAllTextAsync(jsonPath, System.Text.Json.JsonSerializer.Serialize(entradasIA));
+
+        //        var scriptPath = @"C:\Users\PC\Documents\GitHub\Backend_para_deploy\dbRede\prever_feed.py";
+
+        //        var psi = new ProcessStartInfo
+        //        {
+        //            FileName = "python", // ou caminho completo do python.exe se não estiver no PATH
+        //            Arguments = $"\"{scriptPath}\" \"{jsonPath}\"",
+        //            RedirectStandardOutput = true,
+        //            RedirectStandardError = true,  // para capturar erros do python
+        //            UseShellExecute = false,
+        //            CreateNoWindow = true
+        //        };
+
+        //        using var process = Process.Start(psi);
+
+        //        if (process == null)
+        //            throw new Exception("Não foi possível iniciar o processo python.");
+
+        //        string output = await process.StandardOutput.ReadToEndAsync();
+        //        string error = await process.StandardError.ReadToEndAsync();
+
+        //        process.WaitForExit();
+
+        //        if (process.ExitCode != 0)
+        //        {
+        //            // Lança exceção com o erro do script python para você saber o que deu errado
+        //            throw new Exception($"Erro no script Python: {error}");
+        //        }
+
+        //        var resultado = System.Text.Json.JsonSerializer.Deserialize<List<IAResposta>>(output);
+
+        //        return resultado.Select(r => (r.postId, r.score)).ToList();
+        //    }
+        //    catch (Exception ex)
+        //    {
+        //        throw new Exception("Erro ao executar script Python: " + ex.Message);
+        //    }
+        //}
+
+
+        // começos do DTOS
         public class CriarPostRequest
         {
             public Guid AutorId { get; set; }
@@ -448,6 +614,14 @@ namespace dbRede.Controllers
             public int Comentarios { get; set; }
             public List<string> Tags { get; set; }
             public string NomeAutor { get; set; }
+            public int? visualization { get; set; }
         }
+
+        public class IAResposta
+        {
+            public Guid postId { get; set; }
+            public double score { get; set; }
+        }
+
     }
 }
