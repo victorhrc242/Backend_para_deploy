@@ -177,6 +177,31 @@ namespace dbRede.Controllers
                 idRemovido = id
             });
         }
+
+        [HttpGet("usuario-curtiu")]
+        public async Task<IActionResult> UsuarioCurtiu([FromQuery] Guid postId, [FromQuery] Guid usuarioId)
+        {
+            try
+            {
+                var resultado = await _supabase
+                    .From<Curtida>()
+                    .Where(c => c.PostId == postId && c.UsuarioId == usuarioId)
+                    .Get();
+
+                bool curtiu = resultado.Models.Any();
+
+                return Ok(new { sucesso = true, curtiu });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new
+                {
+                    sucesso = false,
+                    mensagem = "Erro ao verificar curtida.",
+                    detalhes = ex.Message
+                });
+            }
+        }
         public class CurtidaResponseDto
         {
             public Guid Id { get; set; }

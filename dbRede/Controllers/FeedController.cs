@@ -13,6 +13,7 @@ using System.Linq;
 using Supabase;
 using System.Text;
 using Microsoft.ML;
+
 namespace dbRede.Controllers
 {
     [ApiController]
@@ -193,11 +194,9 @@ namespace dbRede.Controllers
             }
         }
         [HttpGet("feed-dinamico-algoritimo-home/{usuarioId}")]
-        public async Task<IActionResult> GetFeedCompleto(Guid usuarioId)
+        public async Task<IActionResult> GetFeedCompleto(Guid usuarioId, int page = 1, int pageSize = 10)
         {
             var stopwatchs = Stopwatch.StartNew();
-            int page = 1;
-            int pageSize = 10;
             string cacheKey = $"feed_{usuarioId}_p{page}_s{pageSize}";
 
             if (_cache.TryGetValue(cacheKey, out List<PostDTO> resultadoCache))
@@ -206,7 +205,6 @@ namespace dbRede.Controllers
                 return Ok(resultadoCache);
             }
 
-            // 1. Carrega dados do Supabase
             var seguindoTask = _cache.GetOrCreateAsync($"seg_{usuarioId}", async _ =>
                 (await _supabase.From<Seguidor>().Where(s => s.Usuario1 == usuarioId && s.Status == "aceito").Get()).Models);
 
@@ -254,7 +252,7 @@ namespace dbRede.Controllers
                 .GroupBy(v => v.post_id)
                 .ToDictionary(g => g.Key, g => g.Count());
 
-            // 2. Carrega modelo ML.NET
+            // IA
             var stopwatchIA = Stopwatch.StartNew();
             var mlContext = new MLContext();
             var modelPath = Path.Combine(Directory.GetCurrentDirectory(), "modelo_feed.zip");
@@ -266,7 +264,6 @@ namespace dbRede.Controllers
 
             var predictionEngine = mlContext.Model.CreatePredictionEngine<ModeloInput, ModeloOutput>(modeloML);
 
-            // 3. Prepara entradas para o modelo e calcula os scores
             var resultadoIA = posts.Select((p, idx) =>
             {
                 var entrada = new ModeloInput
@@ -281,17 +278,20 @@ namespace dbRede.Controllers
                 };
 
                 var resultado = predictionEngine.Predict(entrada);
-                return new ScoreResponse { postId = idx, score = resultado.Probability }; // ou resultado.Score
+                return new ScoreResponse { postId = idx, score = resultado.Probability };
             }).ToList();
 
             var mapaScores = resultadoIA.ToDictionary(x => x.postId, x => x.score);
-            stopwatchIA.Stop(); // ⏱️ Fim da medição
+            stopwatchIA.Stop();
             Console.WriteLine($"⚙️ IA executada em: {stopwatchIA.ElapsedMilliseconds} ms");
 
-            // 4. Ordena e pagina o feed
+            // Preparar HashSet com posts curtidos pelo usuário para consulta rápida
+            var postsCurtidosUsuario = curtidas.Select(c => c.PostId).ToHashSet();
+
+            // Ordenação + Paginação
             var feedFiltrado = posts
                 .Where((p, idx) => mapaScores.ContainsKey(idx))
-                .OrderBy(p => mapaVisualizacaoUsuario.ContainsKey(p.Id) ? 1 : 0) // não vistos primeiro
+                .OrderBy(p => mapaVisualizacaoUsuario.ContainsKey(p.Id) ? 1 : 0)
                 .ThenByDescending(p => mapaScores[posts.IndexOf(p)])
                 .Skip((page - 1) * pageSize)
                 .Take(pageSize)
@@ -319,6 +319,7 @@ namespace dbRede.Controllers
                 AutorId = post.AutorId,
                 NomeAutor = mapaAutores.TryGetValue(post.AutorId, out var nome) ? nome : "Desconhecido",
                 visualization = post.visualizacao,
+                FoiCurtido = postsCurtidosUsuario.Contains(post.Id) // <-- campo novo
             }).ToList();
 
             stopwatchs.Stop();
@@ -331,6 +332,7 @@ namespace dbRede.Controllers
         }
 
 
+        //   visualização sendo contada    e salvada  para o algoritimo filtrar melhor o feed  
 
         [HttpPost("post/{postId}/visualizacao")]
         public async Task<IActionResult> RegistrarVisualizacao(Guid postId, [FromQuery] Guid usuarioId, [FromQuery] int tempoEmSegundos = 0)
@@ -340,16 +342,27 @@ namespace dbRede.Controllers
                 return BadRequest(new { erro = "Tempo de visualização insuficiente." });
             }
 
-            var visualizacaoExistente = await _supabase
-                .From<VisualizacaoPost>()
-                .Where(v => v.usuario_id == usuarioId && v.post_id == postId)
-                .Get();
+            // Busca visualizações anteriores do usuário para esse post
+            var visualizacoes = await _supabase
+           .From<VisualizacaoPost>()
+           .Where(v => v.usuario_id == usuarioId && v.post_id == postId)
+           .Get();
 
-            if (visualizacaoExistente.Models.Any())
+            // Validação: já visualizou nos últimos 5 minutos?
+            if (visualizacoes.Models.Any())
             {
-                return Ok(new { mensagem = "Visualização já registrada." });
-            }
+                var ultimaVisualizacao = visualizacoes.Models
+                    .OrderByDescending(v => v.data_visualizacao)
+                    .First();
 
+                var tempoDecorrido = DateTime.UtcNow - ultimaVisualizacao.data_visualizacao;
+
+                if (tempoDecorrido.TotalMinutes < 5)
+                {
+                    return Ok(new { mensagem = "Visualização já registrada recentemente." });
+                }
+            }
+            // Salva nova visualização
             await _supabase.From<VisualizacaoPost>().Insert(new VisualizacaoPost
             {
                 usuario_id = usuarioId,
@@ -357,6 +370,7 @@ namespace dbRede.Controllers
                 data_visualizacao = DateTime.UtcNow
             });
 
+            // Atualiza contagem de visualizações no post
             var postResp = await _supabase.From<Post>().Where(p => p.Id == postId).Get();
             if (!postResp.Models.Any())
             {
@@ -378,6 +392,7 @@ namespace dbRede.Controllers
 
             return Ok(new { mensagem = "Visualização registrada com sucesso." });
         }
+
         [HttpPost("criar")]
         public async Task<IActionResult> CriarPost([FromBody] CriarPostRequest novoPost)
         {
@@ -458,11 +473,28 @@ namespace dbRede.Controllers
         }
 
         [HttpGet("videos")]
-        public async Task<IActionResult> GetVideos()
+        public async Task<IActionResult> GetVideos([FromQuery] int page = 1, [FromQuery] int pageSize = 10)
         {
+            int start = (page - 1) * pageSize;
+            int end = start + pageSize - 1;
+
+            // Buscar o total (count) de posts com vídeo
+            var totalPosts = await _supabase
+            .From<Post>()
+            .Filter("video", Operator.NotEqual, (string?)null)
+            .Filter("video", Operator.NotEqual, "")
+            .Count(CountType.Exact);
+
+
+
+
+            // Buscar os posts paginados com autor
             var resultado = await _supabase
                 .From<Post>()
+                .Filter("video", Operator.NotEqual, (string?)null)
+                .Filter("video", Operator.NotEqual, "")
                 .Select("*, users (nome)")
+                .Range(start, end)
                 .Get();
 
             if (resultado == null)
@@ -471,7 +503,6 @@ namespace dbRede.Controllers
             var brasilTimeZone = TimeZoneInfo.FindSystemTimeZoneById("E. South America Standard Time");
 
             var videosComAutores = resultado.Models
-                .Where(post => !string.IsNullOrEmpty(post.Video))
                 .Select(post => new PostDTO
                 {
                     Id = post.Id,
@@ -483,10 +514,16 @@ namespace dbRede.Controllers
                     Comentarios = post.Comentarios,
                     AutorId = post.AutorId,
                     NomeAutor = post.Usuarios?.Nome ?? "Desconhecido"
-                });
+                }).ToList();
 
-            return Ok(videosComAutores);
+            return Ok(new
+            {
+                videos = videosComAutores,
+                total = totalPosts
+            });
         }
+
+
 
         //  listar tags
         [HttpGet("tags")]
@@ -596,6 +633,7 @@ namespace dbRede.Controllers
             public List<string> Tags { get; set; }
             public string NomeAutor { get; set; }
             public int? visualization { get; set; }
+            public bool FoiCurtido { get; set; }
         }
         public class ModeloInput
         {

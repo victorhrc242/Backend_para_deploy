@@ -252,6 +252,44 @@ public class RegisterController : ControllerBase
             return StatusCode(500, new { erro = "Erro interno no servidor", details = ex.Message });
         }
     }
+    [HttpPut("trocar-senha-logado/{id}")]
+    public async Task<IActionResult> TrocarSenhaLogado(Guid id, [FromBody] TrocarSenhaRequest request)
+    {
+        if (string.IsNullOrWhiteSpace(request.SenhaAtual) || string.IsNullOrWhiteSpace(request.NovaSenha))
+        {
+            return BadRequest(new { erro = "A senha atual e a nova senha são obrigatórias." });
+        }
+
+        try
+        {
+            var usuario = await _supabase.From<User>().Where(u => u.id == id).Single();
+
+            if (usuario == null)
+                return NotFound(new { erro = "Usuário não encontrado" });
+
+            // Verifica se a senha atual informada confere com o hash salvo
+            bool senhaConfere = BCrypt.Net.BCrypt.Verify(request.SenhaAtual, usuario.Senha);
+            if (!senhaConfere)
+                return BadRequest(new { erro = "Senha atual incorreta." });
+
+            // Gera o hash da nova senha
+            string novaSenhaHash = BCrypt.Net.BCrypt.HashPassword(request.NovaSenha);
+
+            // Atualiza a senha no banco
+            await _supabase
+                .From<User>()
+                .Where(u => u.id == id)
+                .Set(u => u.Senha, novaSenhaHash)
+                .Update();
+
+            return Ok(new { message = "Senha alterada com sucesso!" });
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { erro = "Erro ao alterar a senha.", detalhes = ex.Message });
+        }
+    }
+
     // comentado para caso se necessario usar 
     //// Verificar se a conta do usuário é privada  
     //[HttpGet("verificar-status/{id}")]
@@ -281,6 +319,12 @@ public class RegisterController : ControllerBase
     //    }
     //}
     //   dtos
+    public class TrocarSenhaRequest
+    {
+        public string SenhaAtual { get; set; }
+        public string NovaSenha { get; set; }
+    }
+
     public class UserDto
     {
         public Guid Id { get; set; }
