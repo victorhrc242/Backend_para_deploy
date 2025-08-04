@@ -569,6 +569,37 @@ namespace dbRede.Controllers
 
         }
 
+        [HttpPost("Excluir-post")]
+        public async Task<IActionResult> ExcluirPost([FromBody] ExcluirPostDTO dados)
+        {
+            // Buscar o post
+            var postResponse = await _supabase
+                .From<Post>()
+                .Where(p => p.Id == dados.PostId)
+                .Get();
+
+            var post = postResponse.Models.FirstOrDefault();
+
+            if (post == null)
+                return NotFound("Post não encontrado.");
+
+            if (post.AutorId != dados.UsuarioId)
+                return Unauthorized("Você não tem permissão para excluir este post.");
+
+            // Excluir o post
+            await _supabase.From<Post>().Delete(post);
+
+            return Ok(new
+            {
+                sucesso = true,
+                mensagem = "Post excluído com sucesso."
+            });
+        }
+        public class ExcluirPostDTO
+        {
+            public Guid PostId { get; set; }
+            public Guid UsuarioId { get; set; }
+        }
 
 
 
