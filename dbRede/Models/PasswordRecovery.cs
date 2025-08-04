@@ -16,6 +16,6 @@ public class PasswordRecovery:BaseModel
     public DateTime Expiration { get; set; }
     [Column("is_used")]
     public bool IsUsed { get; set; }
-    [Column("tipo ")]
+    [Column("tipo")]
     public string tipo { get; set; }
 }
