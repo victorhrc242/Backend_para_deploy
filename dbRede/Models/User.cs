@@ -30,4 +30,5 @@ public class User : BaseModel
     public string dataaniversario { get; set; }
     [Column("publica")]
     public bool publica { get; set; }
+
 }

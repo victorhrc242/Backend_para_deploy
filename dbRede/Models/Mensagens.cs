@@ -16,7 +16,7 @@ namespace dbRede.Models
         public string conteudo { get; set; }
         [Column("post_compartilhado_id")]
         public Guid? Postid { get; set; }
-        [Column("story_id ")]
+        [Column("story_id")]
         public Guid? story_id { get; set; }
         [Column("lida")]
         public Boolean lida { get; set; }

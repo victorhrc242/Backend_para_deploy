@@ -37,10 +37,9 @@ public class RegisterController : ControllerBase
             string.IsNullOrWhiteSpace(request.Senha) ||
             string.IsNullOrWhiteSpace(request.biografia) ||
             string.IsNullOrWhiteSpace(request.dataaniversario) ||
-            string.IsNullOrWhiteSpace(request.FotoPerfil) ||
-            string.IsNullOrWhiteSpace(request.CodigoVerificacao))  // Verifica o código também
+            string.IsNullOrWhiteSpace(request.FotoPerfil))
         {
-            return BadRequest(new { error = "Todos os campos são obrigatórios, incluindo o código de verificação." });
+            return BadRequest(new { error = "Todos os campos são obrigatórios, exceto o código de verificação." });
         }
 
         try
@@ -59,19 +58,6 @@ public class RegisterController : ControllerBase
             if (existingNome.Models.Any())
                 return BadRequest(new { error = "Nome de usuário já está em uso." });
 
-            // Buscar código de verificação válido
-            var recoveryResponse = await _supabase
-                .From<PasswordRecovery>()
-                .Filter("recovery_code", Operator.Equals, request.CodigoVerificacao)
-                .Filter("is_used", Operator.Equals, "false")
-                .Filter("expiration", Operator.GreaterThan, DateTime.UtcNow.ToString("o"))
-                .Get();
-
-            var codigo = recoveryResponse.Models.FirstOrDefault();
-
-            if (codigo == null)
-                return BadRequest(new { error = "Código de verificação inválido, expirado ou já utilizado." });
-
             // Hash da senha
             var senhaHash = BCrypt.Net.BCrypt.HashPassword(request.Senha);
 
@@ -83,15 +69,12 @@ public class RegisterController : ControllerBase
                 Senha = senhaHash,
                 FotoPerfil = request.FotoPerfil,
                 biografia = request.biografia,
-                dataaniversario = request.dataaniversario
+                dataaniversario = request.dataaniversario,
+              
             };
 
             // Inserir novo usuário
             var response = await _supabase.From<User>().Insert(newUser);
-
-            // Marcar o código como usado
-            codigo.IsUsed = true;
-            await _supabase.From<PasswordRecovery>().Upsert(codigo);
 
             return Ok(new
             {
@@ -112,6 +95,7 @@ public class RegisterController : ControllerBase
             return StatusCode(500, new { error = "Erro interno no servidor.", details = ex.Message });
         }
     }
+
 
 
     // edita algumas infomraçãoes do usuario
@@ -414,6 +398,5 @@ public class RegisterController : ControllerBase
         public string biografia { get; set; }
         public string dataaniversario { get; set; }
         public string Nome_usuario { get; set; }
-        public string CodigoVerificacao { get; set; }  // <--- NOVO CAMPO
     }
 }

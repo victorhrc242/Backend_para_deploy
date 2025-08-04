@@ -9,7 +9,7 @@ public class PasswordRecovery:BaseModel
     [JsonIgnore]
     public Guid Id { get; set; }
     [Column("user_id")]
-    public Guid UserId { get; set; }
+    public Guid? UserId { get; set; }
     [Column("recovery_code")]
     public string RecoveryCode { get; set; }
     [Column("expiration")]
@@ -18,4 +18,6 @@ public class PasswordRecovery:BaseModel
     public bool IsUsed { get; set; }
     [Column("tipo")]
     public string tipo { get; set; }
+    [Column("email")]
+    public string Email { get; set; }
 }

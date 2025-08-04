@@ -53,29 +53,44 @@ public class Logi : ControllerBase
     [HttpPost("Enviar-codigo")]
     public async Task<IActionResult> EnviarCodigo([FromBody] EnviarCodigoDTO dados)
     {
-        if (string.IsNullOrEmpty(dados.Email) || string.IsNullOrEmpty(dados.Tipo))
-            return BadRequest("Email e tipo são obrigatórios.");
+        if (string.IsNullOrEmpty(dados.Tipo))
+            return BadRequest("Tipo é obrigatório.");
 
-        var usuarioResponse = await _supabase
-            .From<User>()
-            .Where(u => u.Email == dados.Email)
-            .Get();
+        // Se o tipo for cadastro, o email é obrigatório
+        if (dados.Tipo == "cadastro" && string.IsNullOrEmpty(dados.Email))
+            return BadRequest("Email é obrigatório para cadastro.");
 
-        var usuario = usuarioResponse.Models.FirstOrDefault();
+        User usuario = null;
 
-        if (usuario == null && (dados.Tipo == "recuperacao" || dados.Tipo == "deletarconta"))
-            return NotFound("Usuário não encontrado.");
+        // Só busca usuário se for recuperação ou deletarconta
+        if (dados.Tipo == "recuperacao" || dados.Tipo == "deletarconta")
+        {
+            if (string.IsNullOrEmpty(dados.Email))
+                return BadRequest("Email é obrigatório para recuperação ou exclusão de conta.");
+
+            var usuarioResponse = await _supabase
+                .From<User>()
+                .Where(u => u.Email == dados.Email)
+                .Get();
+
+            usuario = usuarioResponse.Models.FirstOrDefault();
+
+            if (usuario == null)
+                return NotFound("Usuário não encontrado.");
+        }
 
         var codigo = new Random().Next(100000, 999999).ToString();
 
         var recovery = new PasswordRecovery
         {
-            UserId = usuario?.id ?? Guid.NewGuid(),
+            UserId = (dados.Tipo == "cadastro") ? (Guid?)null : usuario?.id,
+            Email = dados.Email,
             RecoveryCode = codigo,
             Expiration = DateTime.UtcNow.AddMinutes(15),
             IsUsed = false,
             tipo = dados.Tipo
         };
+
         await _supabase.From<PasswordRecovery>().Insert(recovery);
 
         string assunto;
@@ -99,11 +114,41 @@ public class Logi : ControllerBase
                 return BadRequest("Tipo inválido. Use: 'cadastro', 'recuperacao' ou 'deletarconta'.");
         }
 
-        var emailService = new EmailService();
-        await emailService.EnviarEmailAsync(dados.Email, assunto, mensagem);
+        if (!string.IsNullOrEmpty(dados.Email))
+        {
+            var emailService = new EmailService();
+            await emailService.EnviarEmailAsync(dados.Email, assunto, mensagem);
+        }
 
         return Ok("Código enviado para o e-mail.");
     }
+    [HttpPost("Verificar-codigo")]
+    public async Task<IActionResult> VerificarCodigo([FromBody] VerificarCodigoDTO dados)
+    {
+        if (string.IsNullOrEmpty(dados.Codigo) || string.IsNullOrEmpty(dados.Tipo) || string.IsNullOrEmpty(dados.Email))
+            return BadRequest("Código, tipo e email são obrigatórios.");
+
+        var response = await _supabase
+            .From<PasswordRecovery>()
+            .Filter("recovery_code", Operator.Equals, dados.Codigo)
+            .Filter("tipo", Operator.Equals, dados.Tipo)
+            .Filter("email", Operator.Equals, dados.Email)
+            .Filter("is_used", Operator.Equals, "false")
+            .Filter("expiration", Operator.GreaterThan, DateTime.UtcNow.ToString("o"))
+            .Get();
+
+        var codigoValido = response.Models.FirstOrDefault();
+
+        if (codigoValido == null)
+            return BadRequest("Código inválido ou expirado.");
+
+        // Marcar código como usado
+        codigoValido.IsUsed = true;
+        await _supabase.From<PasswordRecovery>().Update(codigoValido);
+
+        return Ok("Código verificado com sucesso.");
+    }
+
 
     // recuperar senha 
 
@@ -187,6 +232,12 @@ public class Logi : ControllerBase
         public string NovaSenha { get; set; }
         public string CodigoRecuperacao { get; set; } // Novo campo
         public string Tipo { get; set; } // "cadastro" ou "recuperacao"
+    }
+    public class VerificarCodigoDTO
+    {
+        public string Codigo { get; set; }
+        public string Tipo { get; set; }
+        public string Email { get; set; } // Pode ser null se você for buscar por UserId no futuro
     }
 
     public class LoginRequest
