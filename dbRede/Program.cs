@@ -24,7 +24,7 @@ builder.Services.AddCors(options =>
     options.AddPolicy("AllowLocalhostWithCredentials", builder =>
     {
         builder.WithOrigins("http://localhost:5173"// url do meu localhost
-            , "https://devisocial.vercel.app")// url do meu dominio hospedado
+            , "https://olicorpparadise.vercel.app")// url do meu dominio hospedado
             .AllowCredentials()
             .AllowAnyMethod()
             .AllowAnyHeader();

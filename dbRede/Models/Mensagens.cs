@@ -14,6 +14,10 @@ namespace dbRede.Models
         public Guid id_destinatario { get; set; }
         [Column("conteudo")]
         public string conteudo { get; set; }
+        [Column("post_compartilhado_id")]
+        public Guid? Postid { get; set; }
+        [Column("story_id ")]
+        public Guid? story_id { get; set; }
         [Column("lida")]
         public Boolean lida { get; set; }
         [Column("data_envio")]

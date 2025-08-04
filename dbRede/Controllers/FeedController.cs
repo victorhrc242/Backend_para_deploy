@@ -153,6 +153,7 @@ namespace dbRede.Controllers
                     Comentarios = post.Comentarios,
                     AutorId = post.AutorId,
                     NomeAutor = post.Usuarios?.Nome ?? "Desconhecido"
+                    
                 });
 
             return Ok(postsComAutores);
@@ -332,8 +333,6 @@ namespace dbRede.Controllers
         }
 
 
-        //   visualização sendo contada    e salvada  para o algoritimo filtrar melhor o feed  
-
         [HttpPost("post/{postId}/visualizacao")]
         public async Task<IActionResult> RegistrarVisualizacao(Guid postId, [FromQuery] Guid usuarioId, [FromQuery] int tempoEmSegundos = 0)
         {
@@ -344,11 +343,10 @@ namespace dbRede.Controllers
 
             // Busca visualizações anteriores do usuário para esse post
             var visualizacoes = await _supabase
-           .From<VisualizacaoPost>()
-           .Where(v => v.usuario_id == usuarioId && v.post_id == postId)
-           .Get();
+                .From<VisualizacaoPost>()
+                .Where(v => v.usuario_id == usuarioId && v.post_id == postId)
+                .Get();
 
-            // Validação: já visualizou nos últimos 5 minutos?
             if (visualizacoes.Models.Any())
             {
                 var ultimaVisualizacao = visualizacoes.Models
@@ -361,14 +359,28 @@ namespace dbRede.Controllers
                 {
                     return Ok(new { mensagem = "Visualização já registrada recentemente." });
                 }
+
+                // Atualiza timestamp da visualização existente
+                ultimaVisualizacao.data_visualizacao = DateTime.UtcNow;
+
+                var updateResp = await _supabase
+                    .From<VisualizacaoPost>()
+                    .Where(v => v.usuario_id == usuarioId && v.post_id == postId)
+                    .Update(ultimaVisualizacao);
+
+                if (!updateResp.Models.Any())
+                    return StatusCode(500, new { erro = "Falha ao atualizar visualização." });
             }
-            // Salva nova visualização
-            await _supabase.From<VisualizacaoPost>().Insert(new VisualizacaoPost
+            else
             {
-                usuario_id = usuarioId,
-                post_id = postId,
-                data_visualizacao = DateTime.UtcNow
-            });
+                // Insere nova visualização
+                await _supabase.From<VisualizacaoPost>().Insert(new VisualizacaoPost
+                {
+                    usuario_id = usuarioId,
+                    post_id = postId,
+                    data_visualizacao = DateTime.UtcNow
+                });
+            }
 
             // Atualiza contagem de visualizações no post
             var postResp = await _supabase.From<Post>().Where(p => p.Id == postId).Get();
@@ -380,18 +392,19 @@ namespace dbRede.Controllers
             var postParaAtualizar = postResp.Models[0];
             postParaAtualizar.visualizacao = (postParaAtualizar.visualizacao ?? 0) + 1;
 
-            var updateResp = await _supabase
+            var updatePostResp = await _supabase
                 .From<Post>()
                 .Where(p => p.Id == postId)
                 .Update(postParaAtualizar);
 
-            if (!updateResp.Models.Any())
+            if (!updatePostResp.Models.Any())
             {
                 return StatusCode(500, new { erro = "Falha ao atualizar visualizações do post." });
             }
 
             return Ok(new { mensagem = "Visualização registrada com sucesso." });
         }
+
 
         [HttpPost("criar")]
         public async Task<IActionResult> CriarPost([FromBody] CriarPostRequest novoPost)
@@ -555,6 +568,10 @@ namespace dbRede.Controllers
             return Ok(lista);
 
         }
+
+
+
+
         //private async Task<List<(Guid postId, double score)>> ObterPontuacoesIA(List<Post> posts, Guid usuarioId)
         //{
         //    try

@@ -66,6 +66,54 @@ public class MensagensController : ControllerBase
             }
         });
     }
+    [HttpPost("enviar-com-post")]
+    public async Task<IActionResult> EnviarMensagemComPost([FromBody] EnviarMensagemComPostRequest request)
+    {
+        var mensagem = new Mensagens
+        {
+            Id = Guid.NewGuid(),
+            id_remetente = request.IdRemetente,
+            id_destinatario = request.IdDestinatario,
+            conteudo = Criptografar(request.Conteudo ?? ""),
+            data_envio = DateTime.UtcNow,
+            lida = false,
+            apagada = false,
+            Postid = request.PostCompartilhadoId
+        };
+
+        var resposta = await _supabase.From<Mensagens>().Insert(mensagem);
+
+        if (resposta.Models.Count == 0)
+            return StatusCode(500, new { sucesso = false, mensagem = "Erro ao enviar a mensagem." });
+
+        // Notificar o destinatário via SignalR
+        await _hubContext.Clients.User(request.IdDestinatario.ToString()).SendAsync("NovaMensagem", new
+        {
+            mensagem.Id,
+            mensagem.id_remetente,
+            mensagem.id_destinatario,
+            conteudo = Descriptografar(mensagem.conteudo),
+            mensagem.data_envio,
+            mensagem.lida,
+            mensagem.Postid
+        });
+
+        return Ok(new
+        {
+            sucesso = true,
+            mensagem = "Mensagem com post compartilhado enviada com sucesso!",
+            dados = new
+            {
+                mensagem.Id,
+                mensagem.id_remetente,
+                mensagem.id_destinatario,
+                conteudo = Descriptografar(mensagem.conteudo),
+                mensagem.data_envio,
+                mensagem.lida,
+                mensagem.Postid
+            }
+        });
+    }
 
     [HttpGet("mensagens/{usuario1Id}/{usuario2Id}")]
     public async Task<IActionResult> ListarMensagensEntreUsuarios(Guid usuario1Id, Guid usuario2Id)
@@ -97,7 +145,9 @@ public class MensagensController : ControllerBase
                     conteudo=Descriptografar(m.conteudo), // Descriptografa o conteúdo da mensagem
                     m.data_envio,
                     m.lida,
-                    m.apagada
+                    m.apagada,
+                    m.Postid
+                    
                 })
                 .ToList();
 
@@ -283,6 +333,62 @@ public class MensagensController : ControllerBase
             });
         }
     }
+    [HttpPost("enviar-com-story")]
+    public async Task<IActionResult> EnviarMensagemComStory([FromBody] EnviarMensagemComStoryRequest request)
+    {
+        var mensagem = new Mensagens
+        {
+            Id = Guid.NewGuid(),
+            id_remetente = request.IdRemetente,
+            id_destinatario = request.IdDestinatario,
+            conteudo = Criptografar(request.Conteudo),
+            data_envio = DateTime.UtcNow,
+            lida = false,
+            apagada = false,
+            story_id = request.StoryId // Pode ser null se não for resposta a story
+        };
+
+        var resposta = await _supabase.From<Mensagens>().Insert(mensagem);
+
+        if (resposta.Models.Count == 0)
+            return StatusCode(500, new { sucesso = false, mensagem = "Erro ao enviar a mensagem." });
+
+        // Notificar o destinatário em tempo real via SignalR
+        await _hubContext.Clients.User(request.IdDestinatario.ToString()).SendAsync("NovaMensagem", new
+        {
+            mensagem.Id,
+            mensagem.id_remetente,
+            mensagem.id_destinatario,
+            conteudo = Descriptografar(mensagem.conteudo),
+            mensagem.data_envio,
+            mensagem.lida,
+            mensagem.story_id
+        });
+
+        return Ok(new
+        {
+            sucesso = true,
+            mensagem = "Mensagem enviada com sucesso!",
+            dados = new
+            {
+                mensagem.Id,
+                mensagem.id_remetente,
+                mensagem.id_destinatario,
+                conteudo = Descriptografar(mensagem.conteudo),
+                mensagem.data_envio,
+                mensagem.lida,
+                mensagem.story_id
+            }
+        });
+    }
+    // DTO para o request
+    public class EnviarMensagemComStoryRequest
+    {
+        public Guid IdRemetente { get; set; }
+        public Guid IdDestinatario { get; set; }
+        public string Conteudo { get; set; }
+        public Guid? StoryId { get; set; } // Nullable para indicar que pode não ter story vinculado
+    }
 
     public class EnviarMensagemRequest
     {
@@ -292,6 +398,13 @@ public class MensagensController : ControllerBase
     }
 
 
+    public class EnviarMensagemComPostRequest
+    {
+        public Guid IdRemetente { get; set; }
+        public Guid IdDestinatario { get; set; }
+        public string Conteudo { get; set; }  // mensagem opcional
+        public Guid? PostCompartilhadoId { get; set; }  // id do post que está compartilhando
+    }
 
 
     //  cripitografia usando byte  elas estão privada pois so sera usada nessa classe

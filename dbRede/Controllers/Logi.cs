@@ -50,12 +50,11 @@ public class Logi : ControllerBase
             user = userDTO
         });
     }
-    // enviar codigo
     [HttpPost("Enviar-codigo")]
     public async Task<IActionResult> EnviarCodigo([FromBody] EnviarCodigoDTO dados)
     {
-        if (string.IsNullOrEmpty(dados.Email))
-            return BadRequest("Email é obrigatório.");
+        if (string.IsNullOrEmpty(dados.Email) || string.IsNullOrEmpty(dados.Tipo))
+            return BadRequest("Email e tipo são obrigatórios.");
 
         var usuarioResponse = await _supabase
             .From<User>()
@@ -64,29 +63,48 @@ public class Logi : ControllerBase
 
         var usuario = usuarioResponse.Models.FirstOrDefault();
 
-        if (usuario == null)
+        if (usuario == null && (dados.Tipo == "recuperacao" || dados.Tipo == "deletarconta"))
             return NotFound("Usuário não encontrado.");
 
         var codigo = new Random().Next(100000, 999999).ToString();
 
         var recovery = new PasswordRecovery
         {
-            UserId = usuario.id,
+            UserId = usuario?.id ?? Guid.NewGuid(),
             RecoveryCode = codigo,
             Expiration = DateTime.UtcNow.AddMinutes(15),
-            IsUsed = false
+            IsUsed = false,
+            tipo = dados.Tipo
         };
-
         await _supabase.From<PasswordRecovery>().Insert(recovery);
 
-        var emailService = new EmailService();
-        await emailService.EnviarEmailAsync(
-            dados.Email,
-            "Recuperação de senha - Sua rede social",
-            $"Olá, {usuario.Nome}! \n\nSeu código de recuperação é: {codigo}\n\nEle expira em 15 minutos.");
+        string assunto;
+        string mensagem;
 
-        return Ok("Código de recuperação enviado para o e-mail.");
+        switch (dados.Tipo.ToLower())
+        {
+            case "cadastro":
+                assunto = "Código de verificação de e-mail";
+                mensagem = $"Olá!\n\nSeu código de cadastro é: {codigo}\n\nEle expira em 15 minutos.";
+                break;
+            case "recuperacao":
+                assunto = "Recuperação de senha";
+                mensagem = $"Olá!\n\nSeu código de recuperação é: {codigo}\n\nEle expira em 15 minutos.";
+                break;
+            case "deletarconta":
+                assunto = "Confirmação de exclusão de conta";
+                mensagem = $"Olá!\n\nSeu código para excluir sua conta é: {codigo}\n\nEle expira em 15 minutos.";
+                break;
+            default:
+                return BadRequest("Tipo inválido. Use: 'cadastro', 'recuperacao' ou 'deletarconta'.");
+        }
+
+        var emailService = new EmailService();
+        await emailService.EnviarEmailAsync(dados.Email, assunto, mensagem);
+
+        return Ok("Código enviado para o e-mail.");
     }
+
     // recuperar senha 
 
     [HttpPut("Recuperar-senha")]
@@ -160,6 +178,7 @@ public class Logi : ControllerBase
     public class EnviarCodigoDTO
     {
         public string Email { get; set; }
+        public string Tipo { get; set; } // "cadastro" ou "recuperacao"
     }
 
     public class RecuperarSenhaDTO
@@ -167,6 +186,7 @@ public class Logi : ControllerBase
         public string Email { get; set; }
         public string NovaSenha { get; set; }
         public string CodigoRecuperacao { get; set; } // Novo campo
+        public string Tipo { get; set; } // "cadastro" ou "recuperacao"
     }
 
     public class LoginRequest

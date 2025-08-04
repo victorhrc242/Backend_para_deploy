@@ -40,32 +40,60 @@ public class ComentarioController : ControllerBase
         if (resposta.Models.Count == 0)
             return StatusCode(500, new { sucesso = false, mensagem = "Erro ao salvar o comentário." });
 
-        // Buscar o post correspondente
+        // Buscar post
         var postResposta = await _supabase.From<Post>().Where(p => p.Id == request.PostId).Get();
-
         var post = postResposta.Models.FirstOrDefault();
 
         if (post != null)
         {
-            // Incrementar a contagem de comentários
             post.Comentarios += 1;
-
-            // Atualizar o post no banco
             await _supabase.From<Post>().Update(post);
         }
+
+        // Broadcast via SignalR
         await _HubContext.Clients.All.SendAsync("Novo comentario", post);
-        // Criar notificação para o usuário que criou o post
-        var notificacao = new Notificacao
+
+        // Notificação ao autor do post
+        var notificacaoAutor = new Notificacao
         {
             Id = Guid.NewGuid(),
-            UsuarioId = post.AutorId,  // Notificar o autor do post
+            UsuarioId = post.AutorId,
+            UsuarioidRemetente = comentario.AutorId,
             Tipo = "Comentario",
-            UsuarioidRemetente = comentario.AutorId,  // Usuário que fez o comentário
-            Mensagem = $"comentou no seu post", // Mensagem personalizada
+            Mensagem = "comentou no seu post",
             DataEnvio = DateTime.UtcNow
         };
-        // Salvar a notificação
-        await _supabase.From<Notificacao>().Insert(notificacao);
+        await _supabase.From<Notificacao>().Insert(notificacaoAutor);
+
+        // Notificações para usuários mencionados
+        if (request.Mencionados != null && request.Mencionados.Any())
+        {
+            foreach (var userId in request.Mencionados.Distinct().Where(id => id != post.AutorId))
+            {
+                var notificacaoMencionado = new Notificacao
+                {
+                    Id = Guid.NewGuid(),
+                    UsuarioId = userId,
+                    UsuarioidRemetente = comentario.AutorId,
+                    Tipo = "MarcacaoComentario",
+                    Mensagem = "mencionou você em um comentário",
+                    DataEnvio = DateTime.UtcNow
+                };
+
+                await _supabase.From<Notificacao>().Insert(notificacaoMencionado);
+
+                // Salvar ligação na tabela de marcações
+                var marcacao = new ComentarioMarcacao
+                {
+                    Id = Guid.NewGuid(),
+                    ComentarioId = comentario.Id,
+                    UsuarioMarcadoId = userId
+                };
+
+                await _supabase.From<ComentarioMarcacao>().Insert(marcacao);
+
+            }
+        }
         return Ok(new
         {
             sucesso = true,
@@ -80,6 +108,7 @@ public class ComentarioController : ControllerBase
             }
         });
     }
+
     [HttpGet("comentarios/{postId}")]
     public async Task<IActionResult> ListarComentariosPorPostId(Guid postId)
     {
@@ -129,6 +158,7 @@ public class ComentarioController : ControllerBase
         public Guid PostId { get; set; }
         public Guid AutorId { get; set; }
         public string Conteudo { get; set; }
+        public List<Guid> Mencionados { get; set; } = new();
     }
 
     public class ComentarioResponseDto

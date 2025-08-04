@@ -264,27 +264,33 @@ public class AmizadesController : ControllerBase
             total = resposta.Models.Count
         });
     }
-    // deleter
     [HttpDelete("deseguir")]
     public async Task<IActionResult> Deseguir([FromQuery] Guid usuario1, [FromQuery] Guid usuario2)
     {
-        // Verificar se usuario1 segue usuario2
-        var seguindo = await _supabase
+        var resultSeguindo = await _supabase
             .From<Seguidor>()
-            .Where(s => s.Usuario1 == usuario1 && s.Usuario2 == usuario2 && s.Status == "aceito")
-            .Single();
+            .Where(s => s.Usuario1 == usuario1)
+            .Where(s => s.Usuario2 == usuario2)
+            .Where(s => s.Status == "aceito")
+            .Limit(1)
+            .Get();
 
-        // Verificar se usuario2 segue usuario1
-        var sendoSeguido = await _supabase
+        var seguindo = resultSeguindo.Models.FirstOrDefault();
+
+        var resultSendoSeguido = await _supabase
             .From<Seguidor>()
-            .Where(s => s.Usuario1 == usuario2 && s.Usuario2 == usuario1 && s.Status == "aceito")
-            .Single();
+            .Where(s => s.Usuario1 == usuario2)
+            .Where(s => s.Usuario2 == usuario1)
+            .Where(s => s.Status == "aceito")
+            .Limit(1)
+            .Get();
+
+        var sendoSeguido = resultSendoSeguido.Models.FirstOrDefault();
 
         bool seguiu = false;
 
         if (seguindo != null)
         {
-            // Aqui pode apagar ou atualizar o status para "cancelado" ou "recusado"
             await _supabase.From<Seguidor>().Delete(seguindo);
             seguiu = true;
         }
@@ -302,6 +308,7 @@ public class AmizadesController : ControllerBase
 
         return Ok(new { sucesso = true, mensagem = "Deseguir realizado com sucesso." });
     }
+
     [HttpGet("segue")]
     public async Task<IActionResult> VerificaSeSegue([FromQuery] Guid usuario1, [FromQuery] Guid usuario2)
     {
