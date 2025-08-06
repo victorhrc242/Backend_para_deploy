@@ -139,7 +139,8 @@ namespace dbRede.Controllers
                     UsuarioId = s.id_usuario,
                     ConteudoUrl = s.conteudo_url,
                     DataCriacao = s.data_criacao,
-                    DataExpiracao = s.data_expiracao
+                    DataExpiracao = s.data_expiracao,
+                    Tipo=s.tipo
                 })
                 .ToList();
 
