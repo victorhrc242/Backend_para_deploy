@@ -239,15 +239,24 @@ public class AmizadesController : ControllerBase
             .Where(s => s.Usuario2 == usuarioId && s.Status == "pendente")
             .Get();
 
-        var pendentes = resposta.Models.Select(s => new SeguidorResponseDto(s)).ToList();
+        var pendentes = resposta.Models.Select(s => new
+        {
+            SolicitacaoId = s.Id,     // ID da solicitação para aceitar/recusar
+            UsuarioRemetenteId = s.Usuario1, // Quem enviou
+            UsuarioDestinoId = s.Usuario2,   // Quem recebeu (usuarioId)
+            s.Status,
+            s.DataSolicitacao
+        }).ToList();
 
         return Ok(new
         {
             sucesso = true,
             usuarioId,
-            total = pendentes.Count
+            total = pendentes.Count,
+            pendentes
         });
     }
+
 
     [HttpGet("solicitacao/existe")]
     public async Task<IActionResult> VerificarSolicitacao([FromQuery] Guid usuario1, [FromQuery] Guid usuario2)
