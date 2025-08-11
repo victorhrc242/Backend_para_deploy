@@ -13,6 +13,7 @@ using System.Linq;
 using Supabase;
 using System.Text;
 using Microsoft.ML;
+using Org.BouncyCastle.Utilities.Collections;
 
 namespace dbRede.Controllers
 {
@@ -569,31 +570,96 @@ namespace dbRede.Controllers
 
         }
 
-        [HttpPost("Excluir-post")]
-        public async Task<IActionResult> ExcluirPost([FromBody] ExcluirPostDTO dados)
+        [HttpDelete("post/{postId}")]
+        public async Task<IActionResult> DeletarPost(Guid postId, [FromQuery] Guid usuarioId)
         {
-            // Buscar o post
-            var postResponse = await _supabase
-                .From<Post>()
-                .Where(p => p.Id == dados.PostId)
-                .Get();
-
-            var post = postResponse.Models.FirstOrDefault();
-
-            if (post == null)
-                return NotFound("Post não encontrado.");
-
-            if (post.AutorId != dados.UsuarioId)
-                return Unauthorized("Você não tem permissão para excluir este post.");
-
-            // Excluir o post
-            await _supabase.From<Post>().Delete(post);
-
-            return Ok(new
+            try
             {
-                sucesso = true,
-                mensagem = "Post excluído com sucesso."
-            });
+                // Buscar o post
+                var postResponse = await _supabase
+                    .From<Post>()
+                    .Where(p => p.Id == postId)
+                    .Get();
+
+                var post = postResponse.Models.FirstOrDefault();
+
+                if (post == null)
+                    return NotFound(new { erro = "Post não encontrado." });
+
+                // Verificar se o usuário é o autor do post
+                if (post.AutorId != usuarioId)
+                    return Unauthorized(new { erro = "Você não tem permissão para excluir este post." });
+
+                // Primeiro deletar todas as dependências (curtidas, comentários, visualizações)
+                await _supabase.From<Curtida>().Where(c => c.PostId == postId).Delete();
+                await _supabase.From<Comentario>().Where(c => c.PostId == postId).Delete();
+                await _supabase.From<VisualizacaoPost>().Where(v => v.post_id == postId).Delete();
+
+                // Depois deletar o post
+                await _supabase.From<Post>().Where(p => p.Id == postId).Delete();
+
+                // Notificar via SignalR sobre a remoção do post
+                await _HubContext.Clients.All.SendAsync("PostRemovido", postId);
+
+                return Ok(new
+                {
+                    sucesso = true,
+                    mensagem = "Post e todas as suas dependências foram removidos com sucesso.",
+                    postId = postId
+                });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new
+                {
+                    erro = "Ocorreu um erro ao tentar excluir o post.",
+                    detalhes = ex.Message
+                });
+            }
+        }
+
+
+        [HttpDelete("story/{storyId}")]
+        public async Task<IActionResult> DeletarStory(Guid storyId, [FromQuery] Guid usuarioId)
+        {
+            try
+            {
+                // Buscar o story
+                var storyResponse = await _supabase
+                    .From<stories>()
+                    .Where(s => s.id == storyId)
+                    .Get();
+
+                var story = storyResponse.Models.FirstOrDefault();
+
+                if (story == null)
+                    return NotFound(new { erro = "Story não encontrado." });
+
+                // Verificar se o usuário é o autor do story
+                if (story.id_usuario != usuarioId)
+                    return Unauthorized(new { erro = "Você não tem permissão para excluir este story." });
+
+                // Deletar o story (normalmente stories não têm muitas dependências)
+                await _supabase.From<stories>().Where(s => s.id == storyId).Delete();
+
+                // Notificar via SignalR sobre a remoção do story
+                await _HubContext.Clients.All.SendAsync("StoryRemovido", storyId);
+
+                return Ok(new
+                {
+                    sucesso = true,
+                    mensagem = "Story removido com sucesso.",
+                    storyId = storyId
+                });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new
+                {
+                    erro = "Ocorreu um erro ao tentar excluir o story.",
+                    detalhes = ex.Message
+                });
+            }
         }
         public class ExcluirPostDTO
         {

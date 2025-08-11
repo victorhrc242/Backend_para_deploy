@@ -2,6 +2,7 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
+using Org.BouncyCastle.Utilities.Collections;
 using Supabase;
 using Supabase.Postgrest.Attributes;
 using System;
@@ -9,6 +10,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Threading.Tasks;
 using static Logi;
+using static RegisterController;
 using static Supabase.Postgrest.Constants;
 
 [ApiController]
@@ -104,36 +106,53 @@ public class RegisterController : ControllerBase
     {
         try
         {
-            var usuario = await _supabase.From<User>().Where(u => u.id == id).Single();
-            if (usuario == null) return NotFound("Usuário não encontrado");
+            var query = _supabase.From<User>().Where(u => u.id == id);
 
-            usuario.Nome_usuario = dados.Nome;
-            usuario.biografia = dados.biografia;
-            usuario.FotoPerfil = dados.imagem; // Já é uma URL
+            bool houveAtualizacao = false;
 
-            var resultado = await _supabase
-      .From<User>()
-      .Where(u => u.id == id)
-      .Set(u => u.Nome_usuario, usuario.Nome_usuario)
-      .Set(u => u.biografia, usuario.biografia)
-      .Set(u => u.FotoPerfil, usuario.FotoPerfil)
-      .Update();
-
-            var usuariosDto = resultado.Models.Select(u => new UserDto
+            if (dados.Nome != null)
             {
-                Id = u.id,
-                Nome_usuario = u.Nome_usuario,
-                imagem = u.FotoPerfil,
-                biografia = u.biografia
-            });
+                query = query.Set(u => u.Nome_usuario, dados.Nome);
+                houveAtualizacao = true;
+            }
 
-            return Ok(usuariosDto);
+            if (dados.biografia != null)
+            {
+                query = query.Set(u => u.biografia, dados.biografia);
+                houveAtualizacao = true;
+            }
+
+            if (dados.imagem != null)
+            {
+                query = query.Set(u => u.FotoPerfil, dados.imagem);
+                houveAtualizacao = true;
+            }
+
+            if (!houveAtualizacao)
+                return BadRequest("Nenhum campo para atualizar.");
+
+            var resultado = await query.Update();
+            var usuarioAtualizado = resultado.Models.FirstOrDefault();
+
+            if (usuarioAtualizado == null)
+                return NotFound("Usuário não encontrado após atualização");
+
+            var usuarioDto = new UserDto
+            {
+                Id = usuarioAtualizado.id,
+                Nome_usuario = usuarioAtualizado.Nome_usuario,
+                imagem = usuarioAtualizado.FotoPerfil,
+                biografia = usuarioAtualizado.biografia
+            };
+
+            return Ok(usuarioDto);
         }
         catch (Exception ex)
         {
             return StatusCode(500, $"Erro ao editar usuário: {ex.Message}");
         }
     }
+
 
 
     [HttpDelete("deletar-conta")]
@@ -329,6 +348,53 @@ public class RegisterController : ControllerBase
             return StatusCode(500, new { erro = "Erro ao alterar a senha.", detalhes = ex.Message });
         }
     }
+    [HttpDelete("excluir-conta-logado/{id}")]
+    public async Task<IActionResult> ExcluirContaLogado(Guid id, [FromBody] ExcluirContaRequest request)
+    {
+        if (string.IsNullOrWhiteSpace(request.Senha))
+            return BadRequest(new { erro = "A senha é obrigatória para confirmar a exclusão." });
+
+        try
+        {
+            var usuario = await _supabase.From<User>().Where(u => u.id == id).Single();
+            if (usuario == null)
+                return NotFound(new { erro = "Usuário não encontrado." });
+
+            bool senhaConfere = BCrypt.Net.BCrypt.Verify(request.Senha, usuario.Senha);
+            if (!senhaConfere)
+                return BadRequest(new { erro = "Senha incorreta." });
+
+            // Apagar curtidas do usuário
+            await _supabase.From<Curtida>().Where(c => c.UsuarioId == id).Delete();
+
+            // Apagar comentários do usuário
+            await _supabase.From<Comentario>().Where(c => c.AutorId == id).Delete();
+
+            // Apagar amizades (seguindo e seguidores)
+            await _supabase.From<Seguidor>().Where(a => a.Usuario1 == id || a.Usuario2 == id).Delete();
+
+            // Apagar stories
+            await _supabase.From<stories>().Where(s => s.id_usuario == id).Delete();
+
+            // Apagar posts
+            await _supabase.From<Post>().Where(p => p.AutorId == id).Delete();
+
+            // Apagar usuário
+            await _supabase.From<User>().Where(u => u.id == id).Delete();
+
+            return Ok(new { message = "Conta excluída com sucesso." });
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { erro = "Erro interno no servidor.", detalhes = ex.Message });
+        }
+    }
+
+    public class ExcluirContaRequest
+    {
+        public string Senha { get; set; }
+    }
+
 
     // comentado para caso se necessario usar 
     //// Verificar se a conta do usuário é privada  
