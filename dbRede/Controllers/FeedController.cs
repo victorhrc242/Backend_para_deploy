@@ -208,13 +208,19 @@ namespace dbRede.Controllers
             }
 
             var seguindoTask = _cache.GetOrCreateAsync($"seg_{usuarioId}", async _ =>
-                (await _supabase.From<Seguidor>().Where(s => s.Usuario1 == usuarioId && s.Status == "aceito").Get()).Models);
+                (await _supabase.From<Seguidor>()
+                    .Where(s => s.Usuario1 == usuarioId && s.Status == "aceito")
+                    .Get()).Models);
 
             var curtidasTask = _cache.GetOrCreateAsync($"curt_{usuarioId}", async _ =>
-                (await _supabase.From<Curtida>().Where(c => c.UsuarioId == usuarioId).Get()).Models);
+                (await _supabase.From<Curtida>()
+                    .Where(c => c.UsuarioId == usuarioId)
+                    .Get()).Models);
 
             var comentariosTask = _cache.GetOrCreateAsync($"com_{usuarioId}", async _ =>
-                (await _supabase.From<Comentario>().Where(c => c.AutorId == usuarioId).Get()).Models);
+                (await _supabase.From<Comentario>()
+                    .Where(c => c.AutorId == usuarioId)
+                    .Get()).Models);
 
             var postsTask = _supabase
                 .From<Post>()
@@ -222,7 +228,9 @@ namespace dbRede.Controllers
                 .Get();
 
             var visualizacoesTask = _cache.GetOrCreateAsync($"viz_{usuarioId}", async _ =>
-                (await _supabase.From<VisualizacaoPost>().Where(v => v.usuario_id == usuarioId).Get()).Models);
+                (await _supabase.From<VisualizacaoPost>()
+                    .Where(v => v.usuario_id == usuarioId)
+                    .Get()).Models);
 
             await Task.WhenAll(seguindoTask, curtidasTask, comentariosTask, postsTask, visualizacoesTask);
 
@@ -287,19 +295,9 @@ namespace dbRede.Controllers
             stopwatchIA.Stop();
             Console.WriteLine($"⚙️ IA executada em: {stopwatchIA.ElapsedMilliseconds} ms");
 
-            // Preparar HashSet com posts curtidos pelo usuário para consulta rápida
             var postsCurtidosUsuario = curtidas.Select(c => c.PostId).ToHashSet();
 
-            // Ordenação + Paginação
-            var feedFiltrado = posts
-                .Where((p, idx) => mapaScores.ContainsKey(idx))
-                .OrderBy(p => mapaVisualizacaoUsuario.ContainsKey(p.Id) ? 1 : 0)
-                .ThenByDescending(p => mapaScores[posts.IndexOf(p)])
-                .Skip((page - 1) * pageSize)
-                .Take(pageSize)
-                .ToList();
-
-            var autorIds = feedFiltrado.Select(p => p.AutorId).Distinct().ToList();
+            var autorIds = posts.Select(p => p.AutorId).Distinct().ToList();
 
             var autoresResp = await _supabase
                 .From<User>()
@@ -307,6 +305,22 @@ namespace dbRede.Controllers
                 .Get();
 
             var mapaAutores = autoresResp.Models.ToDictionary(u => u.id, u => u.Nome);
+            var mapaAutoresPrivacidade = autoresResp.Models.ToDictionary(u => u.id, u => u.publica);
+
+            var feedFiltrado = posts
+                .Where((p, idx) =>
+                {
+                    bool autorPublico = mapaAutoresPrivacidade.TryGetValue(p.AutorId, out var isPublic) && isPublic;
+                    bool segueAutor = idsSeguidos.Contains(p.AutorId);
+                    bool temScore = mapaScores.ContainsKey(idx);
+
+                    return autorPublico || (!autorPublico && segueAutor) && temScore;
+                })
+                .OrderBy(p => mapaVisualizacaoUsuario.ContainsKey(p.Id) ? 1 : 0)
+                .ThenByDescending(p => mapaScores[posts.IndexOf(p)])
+                .Skip((page - 1) * pageSize)
+                .Take(pageSize)
+                .ToList();
 
             var resultado = feedFiltrado.Select(post => new PostDTO
             {
@@ -321,7 +335,7 @@ namespace dbRede.Controllers
                 AutorId = post.AutorId,
                 NomeAutor = mapaAutores.TryGetValue(post.AutorId, out var nome) ? nome : "Desconhecido",
                 visualization = post.visualizacao,
-                FoiCurtido = postsCurtidosUsuario.Contains(post.Id) // <-- campo novo
+                FoiCurtido = postsCurtidosUsuario.Contains(post.Id)
             }).ToList();
 
             stopwatchs.Stop();

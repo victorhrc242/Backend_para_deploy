@@ -286,37 +286,16 @@ public class AmizadesController : ControllerBase
 
         var seguindo = resultSeguindo.Models.FirstOrDefault();
 
-        var resultSendoSeguido = await _supabase
-            .From<Seguidor>()
-            .Where(s => s.Usuario1 == usuario2)
-            .Where(s => s.Usuario2 == usuario1)
-            .Where(s => s.Status == "aceito")
-            .Limit(1)
-            .Get();
-
-        var sendoSeguido = resultSendoSeguido.Models.FirstOrDefault();
-
-        bool seguiu = false;
-
-        if (seguindo != null)
-        {
-            await _supabase.From<Seguidor>().Delete(seguindo);
-            seguiu = true;
-        }
-
-        if (sendoSeguido != null)
-        {
-            await _supabase.From<Seguidor>().Delete(sendoSeguido);
-            seguiu = true;
-        }
-
-        if (!seguiu)
+        if (seguindo == null)
         {
             return NotFound(new { sucesso = false, mensagem = "Nenhuma relação de seguimento encontrada entre os usuários." });
         }
 
+        await _supabase.From<Seguidor>().Delete(seguindo);
+
         return Ok(new { sucesso = true, mensagem = "Deseguir realizado com sucesso." });
     }
+
 
     [HttpGet("segue")]
     public async Task<IActionResult> VerificaSeSegue([FromQuery] Guid usuario1, [FromQuery] Guid usuario2)
