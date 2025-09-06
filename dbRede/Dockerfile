@@ -3,6 +3,11 @@ FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS base
 WORKDIR /app
 EXPOSE 80
 
+# Atualiza certificados raiz (importante para TLS MongoDB Atlas)
+RUN apt-get update && \
+    apt-get install -y ca-certificates && \
+    update-ca-certificates
+
 # Etapa 2: build da aplicação
 FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
 WORKDIR /src
