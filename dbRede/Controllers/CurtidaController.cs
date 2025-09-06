@@ -5,6 +5,7 @@ using static dbRede.Controllers.CurtidaController.CurtidaResponseDto;
 using Microsoft.AspNetCore.SignalR;
 using MongoDB.Driver;
 using static MensagensController;
+using StackExchange.Redis;
 
 namespace dbRede.Controllers
 {
@@ -15,7 +16,8 @@ namespace dbRede.Controllers
         private readonly Client _supabase;
         private readonly IHubContext<CurtidaHub> _hubContext;
         private readonly IMongoCollection<Notificacao> _notificacoesCollection;
-        public CurtidaController(IConfiguration configuration, IHubContext<CurtidaHub> hubContext)
+        private readonly IDatabase _redis;
+        public CurtidaController(IConfiguration configuration, IHubContext<CurtidaHub> hubContext,IConnectionMultiplexer redis)
         {
             var service = new SupabaseService(configuration);
             _supabase = service.GetClient();
@@ -23,6 +25,7 @@ namespace dbRede.Controllers
             var mongoSettings = configuration.GetSection("MongoSettings");
             var connectionString = mongoSettings.GetValue<string>("ConnectionString");
             var databaseName = mongoSettings.GetValue<string>("DatabaseName");
+            _redis = redis.GetDatabase();
 
             // Configura MongoClient com TLS 1.2
             var settings = MongoClientSettings.FromConnectionString(connectionString);
@@ -39,7 +42,7 @@ namespace dbRede.Controllers
         [HttpPost("curtir")]
         public async Task<IActionResult> CurtirPost([FromBody] CriarCurtidaRequest request)
         {
-            // 1. Criar a curtida
+            // 1. Criar a curtida (Supabase ainda é o "banco oficial")
             var curtida = new Curtida
             {
                 Id = Guid.NewGuid(),
@@ -64,9 +67,11 @@ namespace dbRede.Controllers
             if (post == null)
                 return NotFound(new { sucesso = false, mensagem = "Post não encontrado." });
 
-            // 3. Incrementar o número de curtidas
-            post.Curtidas += 1;
+            // 3. Incrementar curtidas no Redis
+            await _redis.StringIncrementAsync($"post:{request.PostId}:likes");
 
+            // Também incrementa no banco oficial (Supabase) para manter sincronizado
+            post.Curtidas += 1;
             var respostaAtualizacao = await _supabase.From<Post>().Update(post);
 
             if (respostaAtualizacao == null || respostaAtualizacao.Models.Count == 0)
@@ -74,7 +79,8 @@ namespace dbRede.Controllers
 
             // 4. Notificar todos os clientes conectados via SignalR
             await _hubContext.Clients.All.SendAsync("ReceberCurtida", request.PostId, request.UsuarioId, true);
-            // Criar notificação para o usuário que criou o post
+
+            // 5. Criar notificação (Mongo)
             var notificacao = new Notificacao
             {
                 UsuarioId = post.AutorId.ToString(),          // Autor do post recebe
@@ -83,14 +89,13 @@ namespace dbRede.Controllers
                 Mensagem = "Curtiu seu post",
                 DataEnvio = DateTime.UtcNow
             };
-            if (notificacao == null)
-            {
-                return StatusCode(500, new { sucesso = false, mensagem = "Erro ao criar notificação." });
-            }
-            // Salvar no Mongo
+
             await _notificacoesCollection.InsertOneAsync(notificacao);
-       
-            // 5. Retornar resposta
+
+            // 6. Retornar resposta
+            // Busca curtidas atuais direto do Redis (mais rápido que contar no Supabase)
+            var totalLikesRedis = await _redis.StringGetAsync($"post:{request.PostId}:likes");
+
             return Ok(new
             {
                 sucesso = true,
@@ -102,32 +107,53 @@ namespace dbRede.Controllers
                     curtida.UsuarioId,
                     curtida.DataCurtiu
                 },
-                curtidasTotais = post.Curtidas
+                curtidasTotais = totalLikesRedis.HasValue ? (int)totalLikesRedis : post.Curtidas
             });
         }
+
         // GET: api/curtida/post/{postId}
         [HttpGet("post/{postId}")]
         public async Task<IActionResult> ListarCurtidasPorPost(Guid postId)
         {
-            var resposta = await _supabase
-                .From<Curtida>()
-                .Where(c => c.PostId == postId)
-                .Get();
+            // Primeiro tenta pegar do Redis
+            var totalLikesRedis = await _redis.StringGetAsync($"post:{postId}:likes");
 
-            var curtidas = resposta.Models.Select(c => new CurtidaResponseDto(c)).ToList();
+            int totalCurtidas;
+            List<CurtidaResponseDto> curtidas = new();
+
+            if (totalLikesRedis.HasValue)
+            {
+                // Se tiver no Redis, só devolve o número
+                totalCurtidas = (int)totalLikesRedis;
+            }
+            else
+            {
+                // Se não houver no Redis, busca no Supabase
+                var resposta = await _supabase
+                    .From<Curtida>()
+                    .Where(c => c.PostId == postId)
+                    .Get();
+
+                curtidas = resposta.Models.Select(c => new CurtidaResponseDto(c)).ToList();
+                totalCurtidas = curtidas.Count;
+
+                // Salva no Redis para próximas consultas
+                await _redis.StringSetAsync($"post:{postId}:likes", totalCurtidas);
+            }
 
             return Ok(new
             {
                 sucesso = true,
                 postId,
-                total = curtidas.Count,
+                total = totalCurtidas,
                 curtidas
             });
         }
+
         [HttpPost("descurtir")]
         public async Task<IActionResult> DescurtirPost([FromBody] CriarCurtidaRequest request)
         {
-            // 1. Buscar a curtida existente
+            // 1. Buscar a curtida existente no Supabase
             var curtidaExistente = await _supabase
                 .From<Curtida>()
                 .Where(c => c.PostId == request.PostId && c.UsuarioId == request.UsuarioId)
@@ -144,7 +170,16 @@ namespace dbRede.Controllers
             if (respostaRemocao == null || respostaRemocao.Models.Count == 0)
                 return StatusCode(500, new { sucesso = false, mensagem = "Erro ao remover curtida." });
 
-            // 3. Atualizar o número de curtidas do post
+            // 3. Atualizar o Redis (decrementar curtidas)
+            var novasCurtidas = await _redis.StringDecrementAsync($"post:{request.PostId}:likes");
+            if (novasCurtidas < 0)
+            {
+                // Garante que não fique negativo
+                await _redis.StringSetAsync($"post:{request.PostId}:likes", 0);
+                novasCurtidas = 0;
+            }
+
+            // 4. Atualizar no Supabase (banco oficial)
             var respostaPost = await _supabase
                 .From<Post>()
                 .Where(p => p.Id == request.PostId)
@@ -155,26 +190,25 @@ namespace dbRede.Controllers
             if (post == null)
                 return NotFound(new { sucesso = false, mensagem = "Post não encontrado." });
 
-            // Evita número negativo
-            post.Curtidas = Math.Max(0, post.Curtidas - 1);
+            post.Curtidas = (int)novasCurtidas;
 
             var respostaAtualizacao = await _supabase.From<Post>().Update(post);
 
             if (respostaAtualizacao == null || respostaAtualizacao.Models.Count == 0)
                 return StatusCode(500, new { sucesso = false, mensagem = "Erro ao atualizar o número de curtidas." });
 
-            // 4. Notificar todos os clientes conectados via SignalR
-            // Envia a notificação informando que o post foi descurtido.
+            // 5. Notificar via SignalR
             await _hubContext.Clients.All.SendAsync("ReceberCurtida", request.PostId, request.UsuarioId, false);
 
-            // 5. Retornar resposta
+            // 6. Retornar resposta
             return Ok(new
             {
                 sucesso = true,
                 mensagem = "Curtida removida com sucesso.",
-                curtidasTotais = post.Curtidas
+                curtidasTotais = novasCurtidas
             });
         }
+
         //delete
         /// <summary>
         /// usado internamente

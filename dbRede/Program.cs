@@ -1,6 +1,7 @@
 ﻿using dbRede.Hubs;
 using dbRede.SignalR;
 using Microsoft.AspNetCore.SignalR;
+using StackExchange.Redis;
 var builder = WebApplication.CreateBuilder(args);
 // Serviços
 builder.Services.AddControllers();
@@ -12,6 +13,12 @@ builder.Services.AddSwaggerGen(c =>
         Title = "dbRede API",
         Version = "v1"
     });
+});
+// Configura Redis
+builder.Services.AddSingleton<IConnectionMultiplexer>(sp =>
+{
+    var configuration = builder.Configuration.GetSection("Redis")["ConnectionString"];
+    return ConnectionMultiplexer.Connect(configuration);
 });
 builder.Services.AddSingleton<SupabaseService>();
 builder.Services.AddSignalR();

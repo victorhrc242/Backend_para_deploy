@@ -10,6 +10,7 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.ML" Version="5.0.0-preview.1.25127.4" />
     <PackageReference Include="Microsoft.ML.FastTree" Version="5.0.0-preview.1.25127.4" />
+    <PackageReference Include="StackExchange.Redis" Version="2.9.11" />
   </ItemGroup>
 
 </Project>
