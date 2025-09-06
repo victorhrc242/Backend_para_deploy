@@ -1,28 +1,37 @@
-﻿using Supabase.Postgrest.Attributes; // este é o correto
-using Supabase.Postgrest.Models;
+﻿using MongoDB.Bson;
+using MongoDB.Bson.Serialization.Attributes;
+using System;
+
 namespace dbRede.Models
 {
-    [Table("mensagens")]
-    public class Mensagens: BaseModel
+    public class Mensagens
     {
-        [PrimaryKey("id", false)]
-        [Column("id")]
-        public Guid Id { get; set; }
-        [Column("id_remetente")]
-        public Guid id_remetente { get; set; }
-        [Column("id_destinatario")]
-        public Guid id_destinatario { get; set; }
-        [Column("conteudo")]
+        [BsonId]
+        [BsonRepresentation(BsonType.ObjectId)] // ID interno do MongoDB
+        public string Id { get; set; }
+
+        [BsonElement("id_remetente")]
+        public string id_remetente { get; set; } // UUID convertido para string
+
+        [BsonElement("id_destinatario")]
+        public string id_destinatario { get; set; }
+
+        [BsonElement("conteudo")]
         public string conteudo { get; set; }
-        [Column("post_compartilhado_id")]
-        public Guid? Postid { get; set; }
-        [Column("story_id")]
-        public Guid? story_id { get; set; }
-        [Column("lida")]
-        public Boolean lida { get; set; }
-        [Column("data_envio")]
-        public DateTime data_envio { get; set; }
-        [Column("apagada")]
-        public Boolean apagada { get; set; }
+
+        [BsonElement("post_compartilhado_id")]
+        public string PostId { get; set; } // Pode ser null
+
+        [BsonElement("story_id")]
+        public string StoryId { get; set; } // Pode ser null
+
+        [BsonElement("lida")]
+        public bool lida { get; set; } = false;
+
+        [BsonElement("data_envio")]
+        public DateTime data_envio { get; set; } = DateTime.UtcNow;
+
+        [BsonElement("apagada")]
+        public bool Apagada { get; set; } = false;
     }
 }

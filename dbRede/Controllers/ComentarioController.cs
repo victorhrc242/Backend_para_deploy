@@ -3,6 +3,7 @@ using dbRede.Models;
 using dbRede.SignalR;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.SignalR;
+using MongoDB.Driver;
 using Supabase;
 using static ComentarioController;
 using static dbRede.Controllers.CurtidaController;
@@ -15,12 +16,20 @@ public class ComentarioController : ControllerBase
 {
     private readonly Client _supabase;
     private readonly IHubContext<ComentarioHub> _HubContext;
-
+    private readonly IMongoCollection<Notificacao> _notificacoesCollection;
     public ComentarioController(IConfiguration configuration, IHubContext<ComentarioHub> hubContext)
     {
         var service = new SupabaseService(configuration);
         _supabase = service.GetClient();
         _HubContext = hubContext;
+        // MongoDB para mensagens
+        var mongoSettings = configuration.GetSection("MongoSettings");
+        var connectionString = mongoSettings.GetValue<string>("ConnectionString");
+        var databaseName = mongoSettings.GetValue<string>("DatabaseName");
+
+        var mongoClient = new MongoClient(connectionString);
+        var mongoDatabase = mongoClient.GetDatabase(databaseName);
+        _notificacoesCollection = mongoDatabase.GetCollection<Notificacao>("Notificacao");
     }
 
     [HttpPost("comentar")]
@@ -54,17 +63,15 @@ public class ComentarioController : ControllerBase
         await _HubContext.Clients.All.SendAsync("Novo comentario", post);
 
         // Notificação ao autor do post
-        var notificacaoAutor = new Notificacao
+            var notificacaoAutor = new Notificacao
         {
-            Id = Guid.NewGuid(),
-            UsuarioId = post.AutorId,
-            UsuarioidRemetente = comentario.AutorId,
+            UsuarioId = post.AutorId.ToString(),
+            UsuarioRemetenteId = comentario.AutorId.ToString(),
             Tipo = "Comentario",
             Mensagem = "comentou no seu post",
             DataEnvio = DateTime.UtcNow
         };
-        await _supabase.From<Notificacao>().Insert(notificacaoAutor);
-
+        await _notificacoesCollection.InsertOneAsync(notificacaoAutor);
         // Notificações para usuários mencionados
         if (request.Mencionados != null && request.Mencionados.Any())
         {
@@ -72,15 +79,13 @@ public class ComentarioController : ControllerBase
             {
                 var notificacaoMencionado = new Notificacao
                 {
-                    Id = Guid.NewGuid(),
-                    UsuarioId = userId,
-                    UsuarioidRemetente = comentario.AutorId,
+                    UsuarioId = userId.ToString(),
+                    UsuarioRemetenteId= comentario.AutorId.ToString(),
                     Tipo = "MarcacaoComentario",
                     Mensagem = "mencionou você em um comentário",
                     DataEnvio = DateTime.UtcNow
                 };
-
-                await _supabase.From<Notificacao>().Insert(notificacaoMencionado);
+                await _notificacoesCollection.InsertOneAsync(notificacaoMencionado);
 
                 // Salvar ligação na tabela de marcações
                 var marcacao = new ComentarioMarcacao

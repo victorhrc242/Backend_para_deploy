@@ -1,6 +1,6 @@
 ﻿using dbRede.Models;
 using Microsoft.AspNetCore.Mvc;
-using Supabase;
+using MongoDB.Driver;
 
 namespace dbRede.Controllers
 {
@@ -8,38 +8,43 @@ namespace dbRede.Controllers
     [Route("api/[controller]")]
     public class NotificacoesController : ControllerBase
     {
-        private readonly Client _supabase;
+        private readonly IMongoCollection<Notificacao> _notificacoesCollection;
 
         public NotificacoesController(IConfiguration configuration)
         {
-            var service = new SupabaseService(configuration);
-            _supabase = service.GetClient();
+            var mongoSettings = configuration.GetSection("MongoSettings");
+            var connectionString = mongoSettings.GetValue<string>("ConnectionString");
+            var databaseName = mongoSettings.GetValue<string>("DatabaseName");
+
+            var mongoClient = new MongoClient(connectionString);
+            var mongoDatabase = mongoClient.GetDatabase(databaseName);
+            _notificacoesCollection = mongoDatabase.GetCollection<Notificacao>("Notificacao");
         }
 
+        // ------------------------- GET NOTIFICAÇÕES -------------------------
         [HttpGet("{usuarioId}")]
         public async Task<IActionResult> GetNotificacoes(Guid usuarioId)
         {
             try
             {
-                // Consulta as notificações do Supabase para o usuário fornecido
-                var resposta = await _supabase
-                    .From<Notificacao>()
-                    .Where(n => n.UsuarioId == usuarioId)
-                    .Order("data_envio", Supabase.Postgrest.Constants.Ordering.Descending)
-                    .Get();
+                // Busca no Mongo todas as notificações do usuário
+                var filtro = Builders<Notificacao>.Filter.Eq(n => n.UsuarioId, usuarioId.ToString());
+                var notificacoes = await _notificacoesCollection
+                    .Find(filtro)
+                    .SortByDescending(n => n.DataEnvio)
+                    .ToListAsync();
 
-                // Mapeia os dados do modelo para o DTO
-                var notificacoesDto = resposta.Models.Select(n => new NotificacaoDto
+                // Mapeia para DTO
+                var notificacoesDto = notificacoes.Select(n => new NotificacaoDto
                 {
                     Id = n.Id,
-                    UsuarioId = n.UsuarioId,
-                    UsuarioRemetenteId = n.UsuarioidRemetente, // <--- Remetente
+                    UsuarioId = Guid.Parse(n.UsuarioId),
+                    UsuarioRemetenteId = string.IsNullOrEmpty(n.UsuarioRemetenteId) ? null : Guid.Parse(n.UsuarioRemetenteId),
                     Tipo = n.Tipo,
                     Mensagem = n.Mensagem,
                     DataEnvio = n.DataEnvio
                 }).ToList();
 
-                // Retorna os dados no formato JSON
                 return Ok(new
                 {
                     usuarioId,
@@ -49,46 +54,19 @@ namespace dbRede.Controllers
             }
             catch (Exception ex)
             {
-                // Se ocorrer um erro, retorna uma resposta de erro
                 return StatusCode(500, new { mensagem = "Erro ao buscar notificações", erro = ex.Message });
             }
-        }   
-
-        [HttpPost]
-        public async Task<IActionResult> CriarNotificacao([FromBody] NotificacaoDto dto)
-        {
-            var notificacao = new Notificacao
-            {
-                Id = Guid.NewGuid(),
-                UsuarioId = dto.UsuarioId,
-                Tipo = dto.Tipo,
-                ReferenciaId = dto.Id,
-                Mensagem = dto.Mensagem,
-                DataEnvio = DateTime.UtcNow
-            };
-
-            var resposta = await _supabase.From<Notificacao>().Insert(notificacao);
-
-            return Ok(new
-            {
-                mensagem = "Notificação criada com sucesso.",
-                notificacao = resposta.Models.FirstOrDefault()
-            });
         }
 
-
+        // ------------------------- DELETE NOTIFICAÇÃO -------------------------
         [HttpDelete("{id}")]
-        public async Task<IActionResult> Deletar(Guid id)
+        public async Task<IActionResult> Deletar(string id)
         {
-            var resultado = await _supabase
-                .From<Notificacao>()
-                .Where(n => n.Id == id)
-                .Single();
+            var filtro = Builders<Notificacao>.Filter.Eq(n => n.Id, id);
+            var resultado = await _notificacoesCollection.DeleteOneAsync(filtro);
 
-            if (resultado == null)
+            if (resultado.DeletedCount == 0)
                 return NotFound(new { erro = "Notificação não encontrada." });
-
-            await _supabase.From<Notificacao>().Delete(resultado);
 
             return Ok(new
             {
@@ -96,16 +74,16 @@ namespace dbRede.Controllers
                 idRemovido = id
             });
         }
-  
+
+        // ------------------------- DTO -------------------------
         public class NotificacaoDto
         {
-            public Guid Id { get; set; }
+            public string Id { get; set; }
             public Guid UsuarioId { get; set; }
-            public Guid? UsuarioRemetenteId { get; set; } // <--- Remetente
+            public Guid? UsuarioRemetenteId { get; set; }
             public string Tipo { get; set; }
             public string Mensagem { get; set; }
             public DateTime DataEnvio { get; set; }
         }
-
     }
 }

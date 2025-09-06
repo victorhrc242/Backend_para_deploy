@@ -1,5 +1,6 @@
 ﻿using dbRede.Models;
 using Microsoft.AspNetCore.Mvc;
+using MongoDB.Driver;
 using Supabase;
 
 [ApiController]
@@ -7,11 +8,19 @@ using Supabase;
 public class AmizadesController : ControllerBase
 {
     private readonly Client _supabase;
-
+    private readonly IMongoCollection<Notificacao> _notificacoesCollection;
     public AmizadesController(IConfiguration configuration)
     {
         var service = new SupabaseService(configuration);
         _supabase = service.GetClient();
+        // MongoDB para mensagens
+        var mongoSettings = configuration.GetSection("MongoSettings");
+        var connectionString = mongoSettings.GetValue<string>("ConnectionString");
+        var databaseName = mongoSettings.GetValue<string>("DatabaseName");
+
+        var mongoClient = new MongoClient(connectionString);
+        var mongoDatabase = mongoClient.GetDatabase(databaseName);
+        _notificacoesCollection = mongoDatabase.GetCollection<Notificacao>("Notificacao");
     }
 
     // Enviar solicitação
@@ -40,16 +49,13 @@ public class AmizadesController : ControllerBase
         // Criar notificação para o usuário2, que tem que aceitar a solicitação
         var notificacao = new Notificacao
         {
-            Id = Guid.NewGuid(),
-            UsuarioId = dto.Usuario2,  // Usuário que precisa ver a solicitação
+            UsuarioId = dto.Usuario2.ToString(),  // Usuário que precisa ver a solicitação
             Tipo = "pendente",
-            UsuarioidRemetente = dto.Usuario1,
-            //Mensagem = $"{nomeUsuario1} Esta pedindo para te seguir",
-            Mensagem = $"Esta pedindo para te seguir",
+            UsuarioRemetenteId = dto.Usuario1.ToString(),
+            Mensagem = $"{nomeUsuario1} Esta pedindo para te seguir",
             DataEnvio = DateTime.UtcNow
         };
-
-        await _supabase.From<Notificacao>().Insert(notificacao);
+        await _notificacoesCollection.InsertOneAsync(notificacao);
 
         return Ok(new
         {
@@ -84,16 +90,14 @@ public class AmizadesController : ControllerBase
         // Criar notificação para o usuário2, que o seguimento já foi aceito automaticamente
         var notificacao = new Notificacao
         {
-            Id = Guid.NewGuid(),
-            UsuarioId = dto.Usuario2,  // Usuário que foi seguido e precisa ver a ação
+            UsuarioId = dto.Usuario2.ToString(),  // Usuário que foi seguido e precisa ver a ação
             Tipo = "aceito",
-            UsuarioidRemetente=dto.Usuario1,
-            //Mensagem = $"{nomeUsuario1} Seguiu Voce",
-            Mensagem = $"Seguiu Voce",
+            UsuarioRemetenteId=dto.Usuario1.ToString(),
+            Mensagem = $"{nomeUsuario1} Seguiu Voce",
             DataEnvio = DateTime.UtcNow
         };
 
-        await _supabase.From<Notificacao>().Insert(notificacao);
+        await _notificacoesCollection.InsertOneAsync(notificacao);
 
         return Ok(new
         {
@@ -129,16 +133,14 @@ public class AmizadesController : ControllerBase
         // Criar notificação para o usuário1 que sua solicitação foi aceita
         var notificacao = new Notificacao
         {
-            Id = Guid.NewGuid(),
-            UsuarioId = resultado.Usuario1,  // Usuário que enviou a solicitação
+            UsuarioId = resultado.Usuario1.ToString(),  // Usuário que enviou a solicitação
             Tipo = "aceito",
-            UsuarioidRemetente=resultado.Usuario1,
-           // Mensagem = $"{nomeUsuario2} aceitou sua solicitação para seguila", // Usando nome do usuario2
-            Mensagem = $"aceitou sua solicitação para seguila", // Usando nome do usuario2
+            UsuarioRemetenteId=resultado.Usuario1.ToString(),
+            Mensagem = $"{nomeUsuario2} aceitou sua solicitação para seguila", // Usando nome do usuario2
             DataEnvio = DateTime.UtcNow
         };
 
-        await _supabase.From<Notificacao>().Insert(notificacao);
+        //await _supabase.From<Notificacao>().Insert(notificacao);
 
         return Ok(new
         {
@@ -169,15 +171,14 @@ public class AmizadesController : ControllerBase
         // Criar notificação para o usuário1 que sua solicitação foi recusada
         var notificacao = new Notificacao
         {
-            Id = Guid.NewGuid(),
-            UsuarioId = resultado.Usuario1,  // Usuário que enviou a solicitação
+            UsuarioId = resultado.Usuario1.ToString(),  // Usuário que enviou a solicitação
             Tipo = "recusado",
-            UsuarioidRemetente=resultado.Usuario1,
-            //Mensagem = $"{nomeUsuario2} Recusou sua solicitação para seguila",// Usando nome do usuario2
+            UsuarioRemetenteId=resultado.Usuario1.ToString(),
+            Mensagem = $"{nomeUsuario2} Recusou sua solicitação para seguila",// Usando nome do usuario2
             DataEnvio = DateTime.UtcNow
         };
 
-        await _supabase.From<Notificacao>().Insert(notificacao);
+        //await _supabase.From<Notificacao>().Insert(notificacao);
 
         return Ok(new
         {

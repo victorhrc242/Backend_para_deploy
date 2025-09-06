@@ -2,6 +2,8 @@
 using dbRede.SignalR;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.SignalR;
+using MongoDB.Bson.Serialization.Attributes;
+using MongoDB.Driver;
 using Supabase;
 using System.Security.Cryptography;
 using System.Text;
@@ -13,381 +15,281 @@ public class MensagensController : ControllerBase
 {
     private readonly Client _supabase;
     private readonly IHubContext<MensagensHub> _hubContext;
+    private readonly IMongoCollection<MensagemMongo> _mensagensCollection;
 
     public MensagensController(IConfiguration configuration, IHubContext<MensagensHub> hubContext)
     {
+        // Supabase para usuários
         var service = new SupabaseService(configuration);
         _supabase = service.GetClient();
+
+        // SignalR
         _hubContext = hubContext;
+
+        // MongoDB para mensagens
+        var mongoSettings = configuration.GetSection("MongoSettings");
+        var connectionString = mongoSettings.GetValue<string>("ConnectionString");
+        var databaseName = mongoSettings.GetValue<string>("DatabaseName");
+
+        var mongoClient = new MongoClient(connectionString);
+        var mongoDatabase = mongoClient.GetDatabase(databaseName);
+        _mensagensCollection = mongoDatabase.GetCollection<MensagemMongo>("mensagens");
     }
 
     [HttpPost("enviar")]
     public async Task<IActionResult> Enviar([FromBody] EnviarMensagemRequest request)
     {
-        var mensagem = new Mensagens
+        var mensagem = new MensagemMongo
         {
-            Id = Guid.NewGuid(),
-            id_remetente = request.IdRemetente,
-            id_destinatario = request.IdDestinatario,
-            conteudo = Criptografar(request.Conteudo),
-            data_envio = DateTime.UtcNow,
-            lida = false,
-            apagada = false
+            Id = Guid.NewGuid().ToString(),
+            IdRemetente = request.IdRemetente.ToString(),
+            IdDestinatario = request.IdDestinatario.ToString(),
+            Conteudo = Criptografar(request.Conteudo),
+            DataEnvio = DateTime.UtcNow,
+            Lida = false,
+            Apagada = false
         };
 
-        var resposta = await _supabase.From<Mensagens>().Insert(mensagem);
+        await _mensagensCollection.InsertOneAsync(mensagem);
 
-        if (resposta.Models.Count == 0)
-            return StatusCode(500, new { sucesso = false, mensagem = "Erro ao enviar a mensagem." });
-
-        // Notificar os clientes conectados em tempo real
-        await _hubContext.Clients.User(request.IdDestinatario.ToString()).SendAsync("NovaMensagem", new
+        var mensagemDto = new
         {
             mensagem.Id,
-            mensagem.id_remetente,
-            mensagem.id_destinatario,
-            conteudo=Descriptografar(mensagem.conteudo),
-            mensagem.data_envio,
-            mensagem.lida
-        });
+            id_remetente = mensagem.IdRemetente,
+            id_destinatario = mensagem.IdDestinatario,
+            conteudo = Descriptografar(mensagem.Conteudo),
+            data_envio = mensagem.DataEnvio,
+            lida = mensagem.Lida,
+            apagada = mensagem.Apagada
+        };
 
-        return Ok(new
-        {
-            sucesso = true,
-            mensagem = "Mensagem enviada com sucesso!",
-            dados = new
-            {
-                mensagem.Id,
-                mensagem.id_remetente,
-                mensagem.id_destinatario,
-                conteudo=Descriptografar(mensagem.conteudo),
-                mensagem.data_envio,
-                mensagem.lida
-            }
-        });
+        // notificação em tempo real
+        await _hubContext.Clients.User(request.IdDestinatario.ToString())
+            .SendAsync("NovaMensagem", mensagemDto);
+
+        // retorno da API
+        return Ok(new { sucesso = true, dados = mensagemDto });
     }
-    [HttpPost("enviar-com-post")]
-    public async Task<IActionResult> EnviarMensagemComPost([FromBody] EnviarMensagemComPostRequest request)
+
+
+   // ------------------------- ENVIAR COM POST -------------------------
+[HttpPost("enviar-com-post")]
+public async Task<IActionResult> EnviarMensagemComPost([FromBody] EnviarMensagemComPostRequest request)
+{
+    var mensagem = new MensagemMongo
     {
-        var mensagem = new Mensagens
-        {
-            Id = Guid.NewGuid(),
-            id_remetente = request.IdRemetente,
-            id_destinatario = request.IdDestinatario,
-            conteudo = Criptografar(request.Conteudo ?? ""),
-            data_envio = DateTime.UtcNow,
-            lida = false,
-            apagada = false,
-            Postid = request.PostCompartilhadoId
-        };
+        Id = Guid.NewGuid().ToString(),
+        IdRemetente = request.IdRemetente.ToString(),
+        IdDestinatario = request.IdDestinatario.ToString(),
+        Conteudo = Criptografar(request.Conteudo ?? ""),
+        DataEnvio = DateTime.UtcNow,
+        Lida = false,
+        Apagada = false,
+        PostCompartilhadoId = request.PostCompartilhadoId?.ToString()
+    };
 
-        var resposta = await _supabase.From<Mensagens>().Insert(mensagem);
+    await _mensagensCollection.InsertOneAsync(mensagem);
 
-        if (resposta.Models.Count == 0)
-            return StatusCode(500, new { sucesso = false, mensagem = "Erro ao enviar a mensagem." });
+    var mensagemDto = new
+    {
+        mensagem.Id,
+        mensagem.IdRemetente,
+        mensagem.IdDestinatario,
+        Conteudo = Descriptografar(mensagem.Conteudo),
+        mensagem.DataEnvio,
+        mensagem.Lida,
+        mensagem.PostCompartilhadoId
+    };
 
-        // Notificar o destinatário via SignalR
-        await _hubContext.Clients.User(request.IdDestinatario.ToString()).SendAsync("NovaMensagem", new
-        {
-            mensagem.Id,
-            mensagem.id_remetente,
-            mensagem.id_destinatario,
-            conteudo = Descriptografar(mensagem.conteudo),
-            mensagem.data_envio,
-            mensagem.lida,
-            mensagem.Postid
-        });
+    await _hubContext.Clients.User(request.IdDestinatario.ToString())
+        .SendAsync("NovaMensagem", mensagemDto);
 
-        return Ok(new
-        {
-            sucesso = true,
-            mensagem = "Mensagem com post compartilhado enviada com sucesso!",
-            dados = new
-            {
-                mensagem.Id,
-                mensagem.id_remetente,
-                mensagem.id_destinatario,
-                conteudo = Descriptografar(mensagem.conteudo),
-                mensagem.data_envio,
-                mensagem.lida,
-                mensagem.Postid
-            }
-        });
-    }
+    return Ok(new { sucesso = true, dados = mensagemDto });
+}
 
+// ------------------------- ENVIAR COM STORY -------------------------
+[HttpPost("enviar-com-story")]
+public async Task<IActionResult> EnviarMensagemComStory([FromBody] EnviarMensagemComStoryRequest request)
+{
+    var mensagem = new MensagemMongo
+    {
+        Id = Guid.NewGuid().ToString(),
+        IdRemetente = request.IdRemetente.ToString(),
+        IdDestinatario = request.IdDestinatario.ToString(),
+        Conteudo = Criptografar(request.Conteudo),
+        DataEnvio = DateTime.UtcNow,
+        Lida = false,
+        Apagada = false,
+        StoryId = request.StoryId?.ToString()
+    };
+
+    await _mensagensCollection.InsertOneAsync(mensagem);
+
+    var mensagemDto = new
+    {
+        mensagem.Id,
+        mensagem.IdRemetente,
+        mensagem.IdDestinatario,
+        Conteudo = Descriptografar(mensagem.Conteudo),
+        mensagem.DataEnvio,
+        mensagem.Lida,
+        mensagem.StoryId
+    };
+
+    await _hubContext.Clients.User(request.IdDestinatario.ToString())
+        .SendAsync("NovaMensagem", mensagemDto);
+
+    return Ok(new { sucesso = true, dados = mensagemDto });
+}
+
+    // ------------------------- LISTAR MENSAGENS ENTRE USUÁRIOS -------------------------
     [HttpGet("mensagens/{usuario1Id}/{usuario2Id}")]
     public async Task<IActionResult> ListarMensagensEntreUsuarios(Guid usuario1Id, Guid usuario2Id)
     {
-        try
-        {
-            var resposta1 = await _supabase
-                .From<Mensagens>()
-                .Filter("id_remetente", Operator.Equals, usuario1Id.ToString())
-                .Filter("id_destinatario", Operator.Equals, usuario2Id.ToString())
-                .Filter("apagada", Operator.Equals, "false")
-                .Get();
+        var filtro = Builders<MensagemMongo>.Filter.Or(
+            Builders<MensagemMongo>.Filter.And(
+                Builders<MensagemMongo>.Filter.Eq(m => m.IdRemetente, usuario1Id.ToString()),
+                Builders<MensagemMongo>.Filter.Eq(m => m.IdDestinatario, usuario2Id.ToString()),
+                Builders<MensagemMongo>.Filter.Eq(m => m.Apagada, false)
+            ),
+            Builders<MensagemMongo>.Filter.And(
+                Builders<MensagemMongo>.Filter.Eq(m => m.IdRemetente, usuario2Id.ToString()),
+                Builders<MensagemMongo>.Filter.Eq(m => m.IdDestinatario, usuario1Id.ToString()),
+                Builders<MensagemMongo>.Filter.Eq(m => m.Apagada, false)
+            )
+        );
 
-            var resposta2 = await _supabase
-                .From<Mensagens>()
-                .Filter("id_remetente", Operator.Equals, usuario2Id.ToString())
-                .Filter("id_destinatario", Operator.Equals, usuario1Id.ToString())
-                .Filter("apagada", Operator.Equals, "false")
-                .Get();
+        var mensagensDb = await _mensagensCollection
+            .Find(filtro)
+            .SortBy(m => m.DataEnvio)
+            .ToListAsync();
 
-            var mensagens = resposta1.Models
-                .Concat(resposta2.Models)
-                .OrderBy(m => m.data_envio)
-                .Select(m => new
-                {
-                    m.Id,
-                    m.id_remetente,
-                    m.id_destinatario,
-                    conteudo=Descriptografar(m.conteudo), // Descriptografa o conteúdo da mensagem
-                    m.data_envio,
-                    m.lida,
-                    m.apagada,
-                    m.Postid
-                    
-                })
-                .ToList();
-
-            return Ok(new
+        var mensagens = mensagensDb
+            .Select(m => new
             {
-                sucesso = true,
-                usuarios = new[] { usuario1Id, usuario2Id },
-                mensagens
-            });
-        }
-        catch (Exception ex)
+                m.Id,
+                id_remetente = m.IdRemetente,
+                id_destinatario = m.IdDestinatario,
+                conteudo = Descriptografar(m.Conteudo),
+                data_envio = m.DataEnvio,
+                lida = m.Lida,
+                apagada = m.Apagada,
+                Postid = m.PostCompartilhadoId
+            })
+            .ToList();
+
+        return Ok(new
         {
-            return StatusCode(500, new
-            {
-                sucesso = false,
-                mensagem = "Erro ao buscar mensagens.",
-                erro = ex.Message
-            });
-        }
+            sucesso = true,
+            usuarios = new[] { usuario1Id, usuario2Id },
+            mensagens
+        });
     }
 
+    // ------------------------- APAGAR -------------------------
     [HttpPut("mensagens/{mensagemId}/apagar")]
-    public async Task<IActionResult> ApagarMensagem(Guid mensagemId)
+    public async Task<IActionResult> ApagarMensagem(string mensagemId)
     {
-        var resposta = await _supabase
-            .From<Mensagens>()
-            .Where(m => m.Id == mensagemId)
-            .Get();
-        var mensagem = resposta.Models.FirstOrDefault();
-        if (mensagem == null)
-            return NotFound(new { sucesso = false, mensagem = "Mensagem não encontrada." });
-        mensagem.apagada = true;
-        await _supabase.From<Mensagens>().Update(mensagem);
+        var filtro = Builders<MensagemMongo>.Filter.Eq(m => m.Id, mensagemId);
+        var update = Builders<MensagemMongo>.Update.Set(m => m.Apagada, true);
 
-        // Notificar os clientes via SignalR que a mensagem foi apagada
+        var result = await _mensagensCollection.UpdateOneAsync(filtro, update);
+
+        if (result.ModifiedCount == 0)
+            return NotFound(new { sucesso = false, mensagem = "Mensagem não encontrada." });
+
         await _hubContext.Clients.All.SendAsync("MensagemApagada", mensagemId);
-        return Ok(new
-        {
-            sucesso = true,
-            mensagem = "Mensagem marcada como apagada.",
-            dados = new
-            {
-                mensagem.Id,
-                mensagem.apagada
-            }
-        });
+
+        return Ok(new { sucesso = true, mensagem = "Mensagem marcada como apagada." });
     }
 
+    // ------------------------- MARCAR COMO LIDA -------------------------
     [HttpPut("marcar-como-lida/{mensagemId}")]
-    public async Task<IActionResult> MarcarMensagemComoLida(Guid mensagemId)
+    public async Task<IActionResult> MarcarMensagemComoLida(string mensagemId)
     {
-        var resposta = await _supabase
-            .From<Mensagens>()
-            .Where(m => m.Id == mensagemId)
-            .Get();
+        var filtro = Builders<MensagemMongo>.Filter.Eq(m => m.Id, mensagemId);
+        var update = Builders<MensagemMongo>.Update.Set(m => m.Lida, true);
 
-        var mensagem = resposta.Models.FirstOrDefault();
+        var result = await _mensagensCollection.UpdateOneAsync(filtro, update);
 
-        if (mensagem == null)
-        {
+        if (result.ModifiedCount == 0)
             return NotFound(new { sucesso = false, mensagem = "Mensagem não encontrada." });
-        }
 
-        mensagem.lida = true;
+        await _hubContext.Clients.All.SendAsync("MensagemLida", mensagemId, true);
 
-        var updateResposta = await _supabase
-            .From<Mensagens>()
-            .Update(mensagem);
-        await _hubContext.Clients.All.SendAsync("MensagemLida", mensagemId, mensagem.lida);
-        return Ok(new
-        {
-            sucesso = true,
-            mensagem = "Mensagem marcada como lida com sucesso.",
-            dados = new
-            {
-                mensagem.Id,
-                mensagem.lida
-            }
-        });
+        return Ok(new { sucesso = true, mensagem = "Mensagem marcada como lida." });
     }
+
+    // ------------------------- BUSCAR NÃO LIDAS -------------------------
     [HttpGet("nao-lidas/{usuarioId}")]
     public async Task<IActionResult> BuscarMensagensNaoLidas(Guid usuarioId)
     {
-        try
-        {
-            var mensagensNaoLidas = await _supabase
-     .From<Mensagens>()
-     .Filter("id_destinatario", Operator.Equals, usuarioId.ToString())
-     .Filter("lida", Operator.Equals, "false")
-     .Filter("apagada", Operator.Equals, "false")
-     .Get();
-            if (mensagensNaoLidas?.Models == null)
-            {
-                return StatusCode(500, new { sucesso = false, erro = "Erro ao buscar mensagens: resposta nula." });
-            }
+        var filtro = Builders<MensagemMongo>.Filter.And(
+            Builders<MensagemMongo>.Filter.Eq(m => m.IdDestinatario, usuarioId.ToString()),
+            Builders<MensagemMongo>.Filter.Eq(m => m.Lida, false),
+            Builders<MensagemMongo>.Filter.Eq(m => m.Apagada, false)
+        );
 
-            var contagem = mensagensNaoLidas.Models
-                .GroupBy(m => m.id_remetente)
-                .ToDictionary(g => g.Key, g => g.Count());
+        var mensagens = await _mensagensCollection.Find(filtro).ToListAsync();
 
-            return Ok(new
-            {
-                sucesso = true,
-                naoLidas = contagem
-            });
-        }
-        catch (Exception ex)
-        {
-            return StatusCode(500, new { sucesso = false, erro = ex.Message });
-        }
+        var contagem = mensagens.GroupBy(m => m.IdRemetente)
+                                .ToDictionary(g => g.Key, g => g.Count());
+
+        return Ok(new { sucesso = true, naoLidas = contagem });
     }
-
-    //deletar mensagem
-    [HttpDelete("{id}")]
-    public async Task<IActionResult>deletar(Guid id)
-    {
-        var resultado = await _supabase.From<Mensagens>()
-            .Where(n => n.Id == id)
-            .Single();
-
-        if (resultado == null)
-            return NotFound(new { erro = "Mensagen Não encontrada" });
-        await _supabase.From<Mensagens>().Delete(resultado);
-        return Ok(new
-        {
-            mensagem = "Mensagem Apagada com sucesso.",
-            IdRemovido = id
-        });
-    }
-    // lista so os usuarios em que o usuario principal segue 
+    // ------------------------- GET USUÁRIOS COM CONVERSAS -------------------------
     [HttpGet("conversas/{usuarioId}")]
     public async Task<IActionResult> GetUsuariosComConversas(Guid usuarioId)
     {
-        try
+        // Pega todos os chats do Mongo
+        var filtro = Builders<MensagemMongo>.Filter.Or(
+            Builders<MensagemMongo>.Filter.Eq(m => m.IdRemetente, usuarioId.ToString()),
+            Builders<MensagemMongo>.Filter.Eq(m => m.IdDestinatario, usuarioId.ToString())
+        );
+
+        var mensagens = await _mensagensCollection.Find(filtro).ToListAsync();
+
+        var outrosUsuariosIds = mensagens
+            .Select(m => m.IdRemetente == usuarioId.ToString() ? m.IdDestinatario : m.IdRemetente)
+            .Distinct()
+            .ToList();
+
+        var usuariosComConversa = new List<object>();
+
+        foreach (var outroId in outrosUsuariosIds)
         {
-            // Busca todas as mensagens onde o usuário é remetente ou destinatário
-            var mensagens = await _supabase
-                .From<Mensagens>()
-                .Where(m => m.id_remetente == usuarioId || m.id_destinatario == usuarioId)
+            var userResult = await _supabase
+                .From<User>()
+                .Filter("id", Operator.Equals, outroId)
                 .Get();
 
-            // Coleta os IDs dos outros usuários com quem ele trocou mensagens
-            var outrosUsuariosIds = mensagens.Models
-                .Select(m => m.id_remetente == usuarioId ? m.id_destinatario : m.id_remetente)
-                .Distinct()
-                .ToList();
-
-            var usuariosComConversa = new List<object>();
-
-            foreach (var outroId in outrosUsuariosIds)
+            var user = userResult.Models.FirstOrDefault();
+            if (user != null)
             {
-                var userResult = await _supabase
-                    .From<User>() // <-- troque se a sua entidade de usuário tiver outro nome
-                    .Where(u => u.id == outroId)
-                    .Get();
-
-                var user = userResult.Models.FirstOrDefault();
-                if (user != null)
+                usuariosComConversa.Add(new
                 {
-                    usuariosComConversa.Add(new
-                    {
-                        user.id,
-                        user.Nome_usuario,
-                        user.FotoPerfil
-                    });
-                }
+                    user.id,
+                    user.Nome_usuario,
+                    user.FotoPerfil
+                });
             }
-
-            return Ok(new
-            {
-                sucesso = true,
-                total = usuariosComConversa.Count,
-                usuarios = usuariosComConversa
-            });
         }
-        catch (Exception ex)
-        {
-            return StatusCode(500, new
-            {
-                sucesso = false,
-                mensagem = "Erro ao buscar usuários com conversas.",
-                erro = ex.Message
-            });
-        }
+
+        return Ok(new { sucesso = true, usuarios = usuariosComConversa });
     }
-    [HttpPost("enviar-com-story")]
-    public async Task<IActionResult> EnviarMensagemComStory([FromBody] EnviarMensagemComStoryRequest request)
+
+    // ------------------------- MODELOS -------------------------
+    public class MensagemMongo
     {
-        var mensagem = new Mensagens
-        {
-            Id = Guid.NewGuid(),
-            id_remetente = request.IdRemetente,
-            id_destinatario = request.IdDestinatario,
-            conteudo = Criptografar(request.Conteudo),
-            data_envio = DateTime.UtcNow,
-            lida = false,
-            apagada = false,
-            story_id = request.StoryId // Pode ser null se não for resposta a story
-        };
-
-        var resposta = await _supabase.From<Mensagens>().Insert(mensagem);
-
-        if (resposta.Models.Count == 0)
-            return StatusCode(500, new { sucesso = false, mensagem = "Erro ao enviar a mensagem." });
-
-        // Notificar o destinatário em tempo real via SignalR
-        await _hubContext.Clients.User(request.IdDestinatario.ToString()).SendAsync("NovaMensagem", new
-        {
-            mensagem.Id,
-            mensagem.id_remetente,
-            mensagem.id_destinatario,
-            conteudo = Descriptografar(mensagem.conteudo),
-            mensagem.data_envio,
-            mensagem.lida,
-            mensagem.story_id
-        });
-
-        return Ok(new
-        {
-            sucesso = true,
-            mensagem = "Mensagem enviada com sucesso!",
-            dados = new
-            {
-                mensagem.Id,
-                mensagem.id_remetente,
-                mensagem.id_destinatario,
-                conteudo = Descriptografar(mensagem.conteudo),
-                mensagem.data_envio,
-                mensagem.lida,
-                mensagem.story_id
-            }
-        });
-    }
-    // DTO para o request
-    public class EnviarMensagemComStoryRequest
-    {
-        public Guid IdRemetente { get; set; }
-        public Guid IdDestinatario { get; set; }
+        [BsonId] public string Id { get; set; }
+        public string IdRemetente { get; set; }
+        public string IdDestinatario { get; set; }
         public string Conteudo { get; set; }
-        public Guid? StoryId { get; set; } // Nullable para indicar que pode não ter story vinculado
+        public bool Lida { get; set; }
+        public bool Apagada { get; set; }
+        public DateTime DataEnvio { get; set; }
+        public string PostCompartilhadoId { get; set; }
+        public string StoryId { get; set; }
     }
 
     public class EnviarMensagemRequest
@@ -397,18 +299,23 @@ public class MensagensController : ControllerBase
         public string Conteudo { get; set; }
     }
 
-
     public class EnviarMensagemComPostRequest
     {
         public Guid IdRemetente { get; set; }
         public Guid IdDestinatario { get; set; }
-        public string Conteudo { get; set; }  // mensagem opcional
-        public Guid? PostCompartilhadoId { get; set; }  // id do post que está compartilhando
+        public string Conteudo { get; set; }
+        public Guid? PostCompartilhadoId { get; set; }
     }
 
+    public class EnviarMensagemComStoryRequest
+    {
+        public Guid IdRemetente { get; set; }
+        public Guid IdDestinatario { get; set; }
+        public string Conteudo { get; set; }
+        public Guid? StoryId { get; set; }
+    }
 
-    //  cripitografia usando byte  elas estão privada pois so sera usada nessa classe
-
+    // ------------------------- CRIPTOGRAFIA -------------------------
     private static string Criptografar(string texto)
     {
         using var aes = Aes.Create();
@@ -421,17 +328,14 @@ public class MensagensController : ControllerBase
         var inputBytes = Encoding.UTF8.GetBytes(texto);
         var encrypted = encryptor.TransformFinalBlock(inputBytes, 0, inputBytes.Length);
 
-        var base64 = Convert.ToBase64String(encrypted);
-        return "[enc]" + base64;
+        return "[enc]" + Convert.ToBase64String(encrypted);
     }
-
 
     private static string Descriptografar(string base64Criptografado)
     {
-        if (!base64Criptografado.StartsWith("[enc]"))
-            return base64Criptografado; // já está em texto plano, não precisa descriptografar
+        if (!base64Criptografado.StartsWith("[enc]")) return base64Criptografado;
 
-        base64Criptografado = base64Criptografado.Substring(5); // remove o prefixo "[enc]"
+        base64Criptografado = base64Criptografado.Substring(5);
 
         using var aes = Aes.Create();
         aes.Key = Encoding.UTF8.GetBytes("1234567890abcdef1234567890abcdef");
@@ -439,12 +343,9 @@ public class MensagensController : ControllerBase
         aes.Mode = CipherMode.CBC;
         aes.Padding = PaddingMode.PKCS7;
 
-        var decryptor = aes.CreateDecryptor();
         var encryptedBytes = Convert.FromBase64String(base64Criptografado);
-        var decrypted = decryptor.TransformFinalBlock(encryptedBytes, 0, encryptedBytes.Length);
+        var decrypted = aes.CreateDecryptor().TransformFinalBlock(encryptedBytes, 0, encryptedBytes.Length);
 
         return Encoding.UTF8.GetString(decrypted);
     }
-
-
 }

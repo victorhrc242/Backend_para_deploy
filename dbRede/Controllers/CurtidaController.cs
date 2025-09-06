@@ -3,6 +3,8 @@ using dbRede.Models;
 using Supabase;
 using static dbRede.Controllers.CurtidaController.CurtidaResponseDto;
 using Microsoft.AspNetCore.SignalR;
+using MongoDB.Driver;
+using static MensagensController;
 
 namespace dbRede.Controllers
 {
@@ -12,11 +14,20 @@ namespace dbRede.Controllers
     {
         private readonly Client _supabase;
         private readonly IHubContext<CurtidaHub> _hubContext;
+        private readonly IMongoCollection<Notificacao> _notificacoesCollection;
         public CurtidaController(IConfiguration configuration, IHubContext<CurtidaHub> hubContext)
         {
             var service = new SupabaseService(configuration);
             _supabase = service.GetClient();
             _hubContext = hubContext;
+            // MongoDB para mensagens
+            var mongoSettings = configuration.GetSection("MongoSettings");
+            var connectionString = mongoSettings.GetValue<string>("ConnectionString");
+            var databaseName = mongoSettings.GetValue<string>("DatabaseName");
+
+            var mongoClient = new MongoClient(connectionString);
+            var mongoDatabase = mongoClient.GetDatabase(databaseName);
+            _notificacoesCollection = mongoDatabase.GetCollection<Notificacao>("Notificacao");
         }
 
         [HttpPost("curtir")]
@@ -60,16 +71,19 @@ namespace dbRede.Controllers
             // Criar notificação para o usuário que criou o post
             var notificacao = new Notificacao
             {
-                Id = Guid.NewGuid(),
-                UsuarioId = post.AutorId,  // Notificar o autor do post
+                UsuarioId = post.AutorId.ToString(),          // Autor do post recebe
                 Tipo = "Curtida",
-                UsuarioidRemetente = curtida.UsuarioId,  // Usuário que fez o comentário
-                Mensagem = $"Curtiu seu post", // Mensagem personalizada
+                UsuarioRemetenteId = curtida.UsuarioId.ToString(), // Quem curtiu
+                Mensagem = "Curtiu seu post",
                 DataEnvio = DateTime.UtcNow
             };
-
-            // Salvar a notificação
-            await _supabase.From<Notificacao>().Insert(notificacao);
+            if (notificacao == null)
+            {
+                return StatusCode(500, new { sucesso = false, mensagem = "Erro ao criar notificação." });
+            }
+            // Salvar no Mongo
+            await _notificacoesCollection.InsertOneAsync(notificacao);
+       
             // 5. Retornar resposta
             return Ok(new
             {

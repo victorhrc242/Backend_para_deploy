@@ -1,30 +1,33 @@
-﻿using Supabase.Postgrest.Attributes;
-using Supabase.Postgrest.Models;
-using System.Text.Json.Serialization;
+﻿using MongoDB.Bson;
+using MongoDB.Bson.Serialization.Attributes;
+using System;
 
 namespace dbRede.Models
 {
-    [Table("notificacoes")]
-    public class Notificacao : BaseModel
+    public class Notificacao
     {
-        [PrimaryKey("id", false)]
-        [Column("id")]
-        public Guid Id { get; set; }
 
-        [Column("usuario_id")]
-        public Guid UsuarioId { get; set; }
+        [BsonId]
+        [BsonRepresentation(BsonType.ObjectId)]
+        public string Id { get; set; }
 
-        [Column("tipo")]
+        [BsonElement("usuario_id")]
+        public string UsuarioId { get; set; }
+
+        [BsonElement("tipo")]
         public string Tipo { get; set; }
 
-        [Column("referencia_id")]
-        public Guid ReferenciaId { get; set; }
-        [Column("usuario_remetente_id")]
-        public Guid? UsuarioidRemetente { get; set; }
-        [Column("mensagem")]
+        [BsonElement("referencia_id")]
+        public string ReferenciaId { get; set; }
+
+        [BsonElement("usuario_remetente_id")]
+        public string UsuarioRemetenteId { get; set; }
+
+        [BsonElement("mensagem")]
         public string Mensagem { get; set; }
 
-        [Column("data_envio")]
-        public DateTime DataEnvio { get; set; }
+        [BsonElement("data_envio")]
+        public DateTime DataEnvio { get; set; } = DateTime.UtcNow;
+
     }
 }
