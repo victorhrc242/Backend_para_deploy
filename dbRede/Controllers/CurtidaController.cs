@@ -20,12 +20,18 @@ namespace dbRede.Controllers
             var service = new SupabaseService(configuration);
             _supabase = service.GetClient();
             _hubContext = hubContext;
-            // MongoDB para mensagens
             var mongoSettings = configuration.GetSection("MongoSettings");
             var connectionString = mongoSettings.GetValue<string>("ConnectionString");
             var databaseName = mongoSettings.GetValue<string>("DatabaseName");
 
-            var mongoClient = new MongoClient(connectionString);
+            // Configura MongoClient com TLS 1.2
+            var settings = MongoClientSettings.FromConnectionString(connectionString);
+            settings.SslSettings = new SslSettings
+            {
+                EnabledSslProtocols = System.Security.Authentication.SslProtocols.Tls12
+            };
+
+            var mongoClient = new MongoClient(settings);
             var mongoDatabase = mongoClient.GetDatabase(databaseName);
             _notificacoesCollection = mongoDatabase.GetCollection<Notificacao>("Notificacao");
         }

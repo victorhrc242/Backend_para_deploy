@@ -30,8 +30,14 @@ public class MensagensController : ControllerBase
         var mongoSettings = configuration.GetSection("MongoSettings");
         var connectionString = mongoSettings.GetValue<string>("ConnectionString");
         var databaseName = mongoSettings.GetValue<string>("DatabaseName");
+        // Configura MongoClient com TLS 1.2 para produção (Atlas)
+        var settings = MongoClientSettings.FromConnectionString(connectionString);
+        settings.SslSettings = new SslSettings
+        {
+            EnabledSslProtocols = System.Security.Authentication.SslProtocols.Tls12
+        };
 
-        var mongoClient = new MongoClient(connectionString);
+        var mongoClient = new MongoClient(settings);
         var mongoDatabase = mongoClient.GetDatabase(databaseName);
         _mensagensCollection = mongoDatabase.GetCollection<MensagemMongo>("mensagens");
     }
