@@ -4,10 +4,12 @@ WORKDIR /app
 EXPOSE 80
 
 # Atualiza certificados raiz (necessário para TLS MongoDB Atlas)
+# Atualiza certificados raiz
 RUN apt-get update && \
     apt-get install -y ca-certificates && \
     update-ca-certificates && \
     rm -rf /var/lib/apt/lists/*
+
 
 # Etapa 2: build da aplicação
 FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
