@@ -68,8 +68,10 @@ namespace dbRede.Controllers
                 return NotFound(new { sucesso = false, mensagem = "Post não encontrado." });
 
             // 3. Incrementar curtidas no Redis
-            await _redis.StringIncrementAsync($"post:{request.PostId}:likes");
-
+            if (_redis != null)
+            {
+                await _redis.StringIncrementAsync($"post:{request.PostId}:likes");
+            }
             // Também incrementa no banco oficial (Supabase) para manter sincronizado
             post.Curtidas += 1;
             var respostaAtualizacao = await _supabase.From<Post>().Update(post);
@@ -116,6 +118,7 @@ namespace dbRede.Controllers
         public async Task<IActionResult> ListarCurtidasPorPost(Guid postId)
         {
             // Primeiro tenta pegar do Redis
+        
             var totalLikesRedis = await _redis.StringGetAsync($"post:{postId}:likes");
 
             int totalCurtidas;
@@ -175,8 +178,11 @@ namespace dbRede.Controllers
             if (novasCurtidas < 0)
             {
                 // Garante que não fique negativo
-                await _redis.StringSetAsync($"post:{request.PostId}:likes", 0);
-                novasCurtidas = 0;
+                if (_redis != null)
+                {
+                    await _redis.StringSetAsync($"post:{request.PostId}:likes", 0);
+                    novasCurtidas = 0;
+                }
             }
 
             // 4. Atualizar no Supabase (banco oficial)
