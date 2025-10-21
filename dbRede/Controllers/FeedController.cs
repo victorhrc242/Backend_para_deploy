@@ -198,6 +198,21 @@ namespace dbRede.Controllers
         [HttpGet("feed-dinamico-algoritimo-home/{usuarioId}")]
         public async Task<IActionResult> GetFeedCompleto(Guid usuarioId, int page = 1, int pageSize = 10)
         {
+            // verificação para usuarios novos 
+            var quantidadeDeSeguindo = await _supabase
+                .From<Seguidor>()
+                .Where(s => s.Usuario1 == usuarioId && s.Status == "aceito")
+                .Get();
+
+            if (quantidadeDeSeguindo.Models.Count < 10)
+            {
+                return Ok(new
+                {
+                    mensagem = "Você precisa seguir até 10 pessoas para poder usar o feed personalizado",
+                    feedDisponivel = false
+                });
+            }
+            // algoritimo segue normalmente 
             var stopwatchs = Stopwatch.StartNew();
             string cacheKey = $"feed_{usuarioId}_p{page}_s{pageSize}";
 
@@ -212,6 +227,7 @@ namespace dbRede.Controllers
                     .Where(s => s.Usuario1 == usuarioId && s.Status == "aceito")
                     .Get()).Models);
 
+          
             var curtidasTask = _cache.GetOrCreateAsync($"curt_{usuarioId}", async _ =>
                 (await _supabase.From<Curtida>()
                     .Where(c => c.UsuarioId == usuarioId)

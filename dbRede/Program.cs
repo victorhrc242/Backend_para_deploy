@@ -2,7 +2,9 @@
 using dbRede.SignalR;
 using Microsoft.AspNetCore.SignalR;
 using StackExchange.Redis;
+
 var builder = WebApplication.CreateBuilder(args);
+
 // Serviços
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
@@ -14,45 +16,57 @@ builder.Services.AddSwaggerGen(c =>
         Version = "v1"
     });
 });
+
 // Configura Redis
 builder.Services.AddSingleton<IConnectionMultiplexer>(sp =>
 {
     var configuration = builder.Configuration.GetSection("Redis")["ConnectionString"];
     return ConnectionMultiplexer.Connect(configuration);
 });
+
 builder.Services.AddSingleton<SupabaseService>();
 builder.Services.AddSignalR();
 builder.Services.AddSingleton<IUserIdProvider, CustomUserIdProvider>();
 builder.Services.AddMemoryCache();
 
-// ✅ Configure CORS corretamente
+// ✅ Configuração CORS
 builder.Services.AddCors(options =>
 {
-    options.AddPolicy("AllowLocalhostWithCredentials", builder =>
+    options.AddPolicy("AllowLocalhostWithCredentials", policy =>
     {
-        builder.WithOrigins("http://localhost:5173"// url do meu localhost
-            , "https://olicorpparadise.vercel.app")// url do meu dominio hospedado
+        policy.WithOrigins(
+                "http://localhost:5173",           // Localhost para dev
+                "https://olicorpparadise.vercel.app" // Produção (Vercel)
+            )
             .AllowCredentials()
-            .AllowAnyMethod()
-            .AllowAnyHeader();
+            .AllowAnyHeader()
+            .AllowAnyMethod();
     });
 });
+
 var app = builder.Build();
-// ✅ Coloque o UseCors antes dos endpoints
+
+// ✅ Ordem correta dos middlewares
+app.UseCors("AllowLocalhostWithCredentials"); // <-- deve vir logo aqui!
+
 app.UseHttpsRedirection();
-app.UseCors("AllowLocalhostWithCredentials");
+
 app.UseSwagger();
 app.UseSwaggerUI(c =>
 {
     c.SwaggerEndpoint("/swagger/v1/swagger.json", "dbRede API v1");
     c.RoutePrefix = "swagger";
 });
+
 app.UseAuthorization();
-// Hub do SignalR
+
+// Hubs do SignalR
 app.MapHub<FeedHub>("/feedHub");
 app.MapHub<ComentarioHub>("/comentarioHub");
 app.MapHub<MensagensHub>("/mensagensHub");
 app.MapHub<CurtidaHub>("/curtidaHub");
+
 // Controllers
 app.MapControllers();
+
 app.Run();
