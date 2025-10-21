@@ -1,25 +1,33 @@
-﻿using MailKit.Net.Smtp;
-using MimeKit;
+﻿using System.Net.Http;
+using System.Net.Http.Headers;
+using System.Text;
+using System.Text.Json;
 using System.Threading.Tasks;
 
 public class EmailService
 {
+    private readonly string _apiKey = "re_9wjVbG7A_8EZiHGhej678HqVy24nfHnny"; // ⚠️ Substitua pela sua chave
+
     public async Task EnviarEmailAsync(string destinatario, string assunto, string mensagem)
     {
-        var email = new MimeMessage();
-        email.From.Add(MailboxAddress.Parse("devlinkcostaoliveira@gmail.com")); // Trocar pelo seu e-mail
-        email.To.Add(MailboxAddress.Parse(destinatario));
-        email.Subject = assunto;
+        using var client = new HttpClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", _apiKey);
 
-        email.Body = new TextPart(MimeKit.Text.TextFormat.Plain)
+        var body = new
         {
-            Text = mensagem
+            from = "devlinkcostaoliveira@gmail.com", // use um domínio ou Gmail aqui
+            to = new[] { destinatario },
+            subject = assunto,
+            html = $"<p>{mensagem}</p>"
         };
 
-        using var smtp = new SmtpClient();
-        await smtp.ConnectAsync("smtp.gmail.com", 587, MailKit.Security.SecureSocketOptions.StartTls);
-        await smtp.AuthenticateAsync("devlinkcostaoliveira@gmail.com", "aqgfrvbfwbvpqehx");
-        await smtp.SendAsync(email);
-        await smtp.DisconnectAsync(true);
+        var content = new StringContent(JsonSerializer.Serialize(body), Encoding.UTF8, "application/json");
+        var response = await client.PostAsync("https://api.resend.com/emails", content);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            var error = await response.Content.ReadAsStringAsync();
+            throw new System.Exception($"Falha ao enviar e-mail: {response.StatusCode} - {error}");
+        }
     }
 }
