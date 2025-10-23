@@ -1,33 +1,25 @@
-﻿using System.Net.Http;
-using System.Net.Http.Headers;
-using System.Text;
-using System.Text.Json;
+﻿using System.Net;
+using System.Net.Mail;
 using System.Threading.Tasks;
 
 public class EmailService
 {
-    private readonly string _apiKey = "re_9wjVbG7A_8EZiHGhej678HqVy24nfHnny"; // ⚠️ Substitua pela sua chave
-
     public async Task EnviarEmailAsync(string destinatario, string assunto, string mensagem)
     {
-        using var client = new HttpClient();
-        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", _apiKey);
+        var remetente = "devlinkcostaoliveira@gmail.com";
+        var senhaApp = "aqgfrvbfwbvpqehx"; // ⚠️ não é a senha normal!
 
-        var body = new
+        using var smtp = new SmtpClient("smtp.gmail.com", 587)
         {
-            from = "devlinkcostaoliveira@gmail.com", // use um domínio ou Gmail aqui
-            to = new[] { destinatario },
-            subject = assunto,
-            html = $"<p>{mensagem}</p>"
+            Credentials = new NetworkCredential(remetente, senhaApp),
+            EnableSsl = true
         };
 
-        var content = new StringContent(JsonSerializer.Serialize(body), Encoding.UTF8, "application/json");
-        var response = await client.PostAsync("https://api.resend.com/emails", content);
-
-        if (!response.IsSuccessStatusCode)
+        var mail = new MailMessage(remetente, destinatario, assunto, mensagem)
         {
-            var error = await response.Content.ReadAsStringAsync();
-            throw new System.Exception($"Falha ao enviar e-mail: {response.StatusCode} - {error}");
-        }
+            IsBodyHtml = true
+        };
+
+        await smtp.SendMailAsync(mail);
     }
 }
