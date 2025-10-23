@@ -53,6 +53,7 @@ public class Logi : ControllerBase
     [HttpPost("Enviar-codigo")]
     public async Task<IActionResult> EnviarCodigo([FromBody] EnviarCodigoDTO dados)
     {
+        Console.WriteLine("Email remetente: " + Environment.GetEnvironmentVariable("EMAIL_REMETENTE"));
         if (string.IsNullOrEmpty(dados.Tipo))
             return BadRequest("Tipo é obrigatório.");
 
