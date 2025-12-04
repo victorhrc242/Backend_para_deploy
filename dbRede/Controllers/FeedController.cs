@@ -204,7 +204,7 @@ namespace dbRede.Controllers
                 .Where(s => s.Usuario1 == usuarioId && s.Status == "aceito")
                 .Get();
 
-            if (quantidadeDeSeguindo.Models.Count < 10)
+            if (quantidadeDeSeguindo.Models.Count < 0)
             {
                 return Ok(new
                 {
